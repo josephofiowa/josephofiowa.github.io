@@ -29,7 +29,7 @@
             }
         }
     });
-    //
+
     // // Closes responsive menu when a scroll trigger link is clicked
     // $(".js-scroll-trigger").click(function () {
     //     $(".navbar-collapse").collapse("hide");
@@ -40,7 +40,7 @@
     //     target: "#mainNav",
     //     offset: 100,
     // });
-    //
+
 //     // Collapse Navbar
 //     var navbarCollapse = function () {
 //         if ($("#mainNav").offset().top > 100) {
