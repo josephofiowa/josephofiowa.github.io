@@ -38,7 +38,7 @@
   --breakpoint-md: 768px;
   --breakpoint-lg: 992px;
   --breakpoint-xl: 1200px;
-  --font-family-sans-serif: -avenir, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-family-sans-serif: "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
   --font-family-monospace: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
@@ -61,7 +61,7 @@ article, aside, figcaption, figure, footer, header, hgroup, main, nav, section {
 
 body {
   margin: 0;
-  font-family: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  font-family: "Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
   font-size: 1rem;
   font-weight: 400;
   line-height: 1.5;
@@ -159,7 +159,7 @@ sup {
   top: -0.5em;
 }
 
-a {
+/* a {
   color: #64a19d;
   text-decoration: none;
   background-color: transparent;
@@ -167,6 +167,19 @@ a {
 a:hover {
   color: #467370;
   text-decoration: underline;
+} */
+
+/* this is the magic */
+a {
+  text-decoration:none;
+  border-bottom: 2px solid #90ee90;
+  box-shadow: inset 0 -4px 0 #90ee90;
+  color: inherit;
+  transition: background 0.1s cubic-bezier(.33,.66,.66,1);
+}
+
+a:hover {
+  background: #90ee90;
 }
 
 a:not([href]) {
@@ -10271,13 +10284,13 @@ body {
 }
 
 .top-section {
-  padding-top: 15rem;
+  padding-top: 8rem;
   background: #F5F6FA;
-  padding-bottom: 30rem;
+  padding-bottom: 3rem;
 
 }
 .top-section p {
-  margin-bottom: 5rem;
+  margin-bottom: 0rem;
 }
 
 .about-section {
@@ -10375,5 +10388,5 @@ body {
 }
 
 .footer {
-  padding: 5rem 0;
+  padding: 1rem 0;
 }
