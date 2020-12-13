@@ -3,6 +3,57 @@
     * Copyright 2013-2020 Start Bootstrap
     * Licensed under MIT (https://github.com/StartBootstrap/startbootstrap-grayscale/blob/master/LICENSE)
     */
+
+    // Tooltip
+
+    $('button').tooltip({
+      trigger: 'click',
+      placement: 'bottom'
+    });
+
+    function setTooltip(btn, message) {
+      $(btn).tooltip('hide')
+        .attr('data-original-title', message)
+        .tooltip('show');
+    }
+
+    function hideTooltip(btn) {
+      setTimeout(function() {
+        $(btn).tooltip('hide');
+      }, 500);
+    }
+
+    // Clipboard
+
+    var clipboard = new Clipboard('button');
+
+    clipboard.on('success', function(e) {
+      setTooltip(e.trigger, 'Copied!');
+      hideTooltip(e.trigger);
+    });
+
+    clipboard.on('error', function(e) {
+      setTooltip(e.trigger, 'Failed!');
+      hideTooltip(e.trigger);
+    });
+
+
+    var coll = document.getElementsByClassName("collapsible");
+    var i;
+
+    for (i = 0; i < coll.length; i++) {
+      coll[i].addEventListener("click", function() {
+        this.classList.toggle("active");
+        var content = this.nextElementSibling;
+        if (content.style.maxHeight){
+          content.style.maxHeight = null;
+        } else {
+          content.style.maxHeight = content.scrollHeight + "px";
+        }
+      });
+    }
+
+
     // (function ($) {
     // "use strict"; // Start of use strict
     //

@@ -9,6 +9,11 @@
         <link rel="icon" type="image/x-icon" href="assets/img/favicon.ico" />
         <!-- Font Awesome icons (free version)-->
         <script src="https://use.fontawesome.com/releases/v5.13.0/js/all.js" crossorigin="anonymous"></script>
+
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/1.5.10/clipboard.min.js"></script>
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+        <script src="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/js/bootstrap.min.js"></script>
+
         <!-- Google fonts-->
         <link href="https://fonts.googleapis.com/css?family=Varela+Round" rel="stylesheet" />
         <link href="https://fonts.googleapis.com/css?family=Nunito:200,200i,300,300i,400,400i,600,600i,700,700i,800,800i,900,900i" rel="stylesheet" />
@@ -16,191 +21,109 @@
         <link href="css/styles.css" rel="stylesheet" />
     </head>
     <body id="page-top">
-        <!-- Navigation-->
-        <!-- <nav class="navbar navbar-expand-lg navbar-light fixed-top" id="mainNav">
-            <div class="container">
-                <a class="navbar-brand js-scroll-trigger" href="#page-top">Start Bootstrap</a>
-                <button class="navbar-toggler navbar-toggler-right" type="button" data-toggle="collapse" data-target="#navbarResponsive" aria-controls="navbarResponsive" aria-expanded="false" aria-label="Toggle navigation">
-                    Menu
-                    <i class="fas fa-bars"></i>
-                </button>
-                <div class="collapse navbar-collapse" id="navbarResponsive">
-                    <ul class="navbar-nav ml-auto">
-                        <li class="nav-item"><a class="nav-link js-scroll-trigger" href="#about">About</a></li>
-                        <li class="nav-item"><a class="nav-link js-scroll-trigger" href="#projects">Projects</a></li>
-                        <li class="nav-item"><a class="nav-link js-scroll-trigger" href="#signup">Contact</a></li>
-                    </ul>
-                </div>
-            </div>
-        </nav> -->
-        <!-- Masthead-->
 
         <!-- Top-->
         <section class="top-section text-left" id="about">
-            <div class="container">
-                <div class="row">
-                    <div class="col-lg-10 mx-auto">
-                        <h2 class="text mb-4">Joseph Nelson <a href="https://www.twitter.com/josephofiowa"><i class="fab fa-twitter"></i></h2></a>
-                        <p class="text">
-                            Co-founder, CEO
-                            <a href="https://roboflow.com">Roboflow</a>. Computer vision developer tools.
-                        </p>
-                        <p class="text">
-                        <br>Previously, I co-founded and ran <a href="https://represently.com">Represently</a>. I've taught 2000 hours of data science at General Assembly,
-                        worked at Facebook, the US Senate, and a few other places.
-                        <a href="https://www.linkedin.com/in/josephofiowa/"><i class="fab fa-linkedin-in"></i></a>
-                      </p>
-                      <p class="text">
-                        <br> I'm from Iowa.
-                      </p>
-                    </div>
-                </div>
-                <!-- <img class="img-fluid" src="assets/img/ipad.png" alt="" /> -->
+
+          <div class="container">
+            <div class="row">
+              <div class="col-lg-10 mx-auto">
+                <h2 class="text mb-4">Joseph Nelson</h2> <h4><a href="https://www.twitter.com/josephofiowa"><i class="fab fa-twitter"></i></a> /
+                  <a href="https://github.com/josephofiowa"><i class="fab fa-github"></i></a> /
+                  <a href="https://www.linkedin.com/in/josephofiowa/"><i class="fab fa-linkedin-in"></i></a> /
+                  <a href="https://www.strava.com/athletes/20780049"><i class="fab fa-strava"></i></a> /
+                  <a href="mailto:joseph@roboflow.ai">
+                    <span class="far fa-envelope"></i></a><h4>
+                    </span>
+                  </a></h2>
+              </div>
             </div>
+          </div>
         </section>
 
-        <header class="masthead">
-            <div class="container d-flex h-100 align-items-center">
-                <div class="mx-auto text-center">
-                    <h1 class="mx-auto my-0 text-uppercase"></h1>
-                    <h2 class="text-white-50 mx-auto mt-2 mb-5"></h2>
-                </div>
-            </div>
-        </header>
 
-        <section class="text-center">
+        <section>
           <div class="container">
+            <div class="row align-items-center">
+              <div class="col-lg-4">
+                <div class="p-5">
+                  <center><img class="img-fluid rounded-circle" src="https://images.squarespace-cdn.com/content/v1/586ae91cb8a79b51177f7811/1548175105509-Z2EK6MG6SC07E7QNDPQ4/ke17ZwdGBToddI8pDm48kOx9thYkxoPEJMHoJ7vUPbh7gQa3H78H3Y0txjaiv_0fDoOvxcdMmMKkDsyUqMSsMWxHk725yiiHCCLfrh8O1z5QHyNOqBUUEtDDsRWrJLTmkp8-C5yNuzs-4HYt4yp_pf4HO_JvD6AabnR2heWYaeHSFBH053jaX9eMgZ1qez3_/headshot-jn-dsm-bw-circle.png?format=500w"
+                  alt="Joseph Nelson Headshot"></center>
+                </div>
+              </div>
+              <div class="col-lg-8">
+                <div class="p-5">
                   <p class="text">
-                      <i> Nelson Family Farms</i>
+                    I'm the co-founder and CEO of <a href="https://roboflow.com">Roboflow</a>.
+                    We make it easy for developers to use computer vision, so computers see things like you can. We're supported by great customers and investors like Y Combinator and Pioneer.
                   </p>
+                  <p>I'm from Iowa.
+                  </p>
+                  </div>
+              </div>
+            </div>
+          </div>
+        </section>
+        <!--
+        <center><img style="padding-top: 10px; padding-bottom: 20px" src="https://blog.roboflow.com/content/images/2020/06/ezgif.com-video-to-gif--3-.gif" alt="Computer vision bicycle object detection, powered by Roboflow"></center>
+        <p class="text">
+      -->
+
+      <div class="container">
+        <div class="row">
+          <div class="col-lg-12">
+        <button class="collapsible">Tell me more</button>
+        <div class="content">
+          <div class="col-lg-10">
+          <p class="text">
+            Before this, I:</p>
+            <ul class="repeating-counter-rule">
+              <li> 🏛️ Co-founded <a href="https://represently.com">Represently</a>, which reduces the time the US Congress takes to respond to constituent mail using natural language processing and machine learning. A company named Fireside acquired it.
+              <li> ✏️  Taught at <a href="https://ga.co">General Assembly</a>. I built and delivered 2000+ hours of data science curriculum. I also helped sell enterprise reskilling programs.
+              <li> 📊 Ran <a href="https://betavector.com"> BetaVector</a> (ROC AUC), a consultancy that built data products.
+              <li> 👶 Interned at Facebook, the US Senate, and a few other places that carry less signaling value to you.
+            </ul>
+            <br>
+            Assorted projects:
+            <ul>
+                <li> 🚲 Assessing bicycle route safety in DC.
+                  <a href="https://github.com/josephofiowa/dc-bike-crash-analysis"><i class="fab fa-github"></i></a>
+                <li> 🏒 Analyzing hockey defenseman efficacy; presented at the Boston Hockey Analytics Conference.
+                  <a href="https://github.com/josephofiowa/dekegeek/tree/master/boshac16"><i class="fab fa-github"></i></a>
+                <li> 🇫🇷 Hosting a hackathon with the French Embassy
+                  <a href="https://www.facebook.com/FranceInTheUs/videos/10154074170681315/?hc_ref=ARTbHfnUBRNndageuH8xbHwjWdn2Myzt2nnpBLdb9a5J1N756rCDVj9gzUhj7WdVAng"><i class="fab fa-facebook"></i></a>
+                  <a href="https://www.instagram.com/p/BQOWAw2DHiH/"><i class="fab fa-instagram"></i></a>
+                  <a href="https://github.com/josephofiowa/frenchedhack-mobility"><i class="fab fa-github"></i></a>
+                  <a href="https://technical.ly/dc/2017/01/30/join-french-embassy-hackathon-closer-franco-u-s-integration/"><i class="far fa-newspaper"></i></a>
+                <li> 🍽 Predicting Michelin Star winners with data
+                  <a href="https://github.com/josephofiowa/dc-michelin-challenge"><i class="fab fa-github"></i></a>
+                  <a href="https://technical.ly/dc/2016/10/19/general-assembly-michelin-winner/"><i class="far fa-newspaper"></i></a>
+                  <a href="https://washingtoncitypaper.com/article/194589/can-data-science-predict-who-will-get-michelin-stars/"><i class="fas fa-newspaper"></i></a>
+                <li> 💸 Measuring Zuckerberg's Hurricane Harvey fundraiser
+                  <a href="https://github.com/josephofiowa/zuck-harvey/blob/master/zuck_fund_analysis.ipynb"><i class="fab fa-github"></i></a>
+            </ul>
+                </div>
+              </div>
+
+              </div>
+            </div>
+            <!-- <img class="img-fluid" src="assets/img/ipad.png" alt="" /> -->
+          </div>
+
+          <section>
+            <div class="col-md-12">
+              <img style="padding-top: 1.5rem; padding-bottom: 1rem" src="assets/img/nelson-family-farms-2013-min.jpg" class="img-responsive fit-image">
+            </div>
+          </section>
+          <section class="text-center">
+            <div class="container">
+              <p class="text">
+                <i> Nelson Family Farms </i>
+              </p>
+              <br>
             </div>
           </section>
 
-
-        <!-- About-->
-        <!-- <section class="about-section text-left" id="about">
-            <div class="container">
-                <div class="row">
-                    <div class="col-lg-8 mx-auto">
-                        <h2 class="text-white mb-4">Joseph Nelson</h2>
-                        <p class="text-white-50">
-                            Grayscale is a free Bootstrap theme created by Start Bootstrap. It can be yours right now, simply download the template on
-                            <a href="https://startbootstrap.com/template-overviews/grayscale/">the preview page</a>
-                            . The theme is open source, and you can use it for any purpose, personal or commercial.
-                        </p>
-                    </div>
-                </div>
-                <img class="img-fluid" src="assets/img/ipad.pg" alt="" />
-            </div>
-        </section> -->
-
-        <!-- Projects-->
-        <!-- <section class="projects-section bg-light" id="projects">
-            <div class="container"> -->
-
-                <!-- Featured Project Row-->
-                <!-- <div class="row align-items-center no-gutters mb-4 mb-lg-5">
-                    <div class="col-xl-8 col-lg-7"><img class="img-fluid mb-3 mb-lg-0" src="assets/img/nelson-family-farms-2013.jpg" alt="" /></div>
-                    <div class="col-xl-4 col-lg-5">
-                        <div class="featured-text text-center text-lg-left">
-                            <h4>Nelson Family Farms</h4>
-                            <p class="text-black-50 mb-0">Grayscale is open source and MIT licensed. This means you can use it for any project - even commercial projects! Download it, customize it, and publish your website!</p>
-                        </div>
-                    </div>
-                </div> -->
-
-                <!-- Project One Row-->
-                <!-- <div class="row justify-content-center no-gutters mb-5 mb-lg-0">
-                    <div class="col-lg-6"><img class="img-fluid" src="assets/img/demo-image-01.jpg" alt="" /></div>
-                    <div class="col-lg-6">
-                        <div class="bg-black text-center h-100 project">
-                            <div class="d-flex h-100">
-                                <div class="project-text w-100 my-auto text-center text-lg-left">
-                                    <h4 class="text-white">Misty</h4>
-                                    <p class="mb-0 text-white-50">An example of where you can put an image of a project, or anything else, along with a description.</p>
-                                    <hr class="d-none d-lg-block mb-0 ml-0" />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div> -->
-
-                <!-- Project Two Row-->
-                <!-- <div class="row justify-content-center no-gutters">
-                    <div class="col-lg-6"><img class="img-fluid" src="assets/img/demo-image-02.jpg" alt="" /></div>
-                    <div class="col-lg-6 order-lg-first">
-                        <div class="bg-black text-center h-100 project">
-                            <div class="d-flex h-100">
-                                <div class="project-text w-100 my-auto text-center text-lg-right">
-                                    <h4 class="text-white">Mountains</h4>
-                                    <p class="mb-0 text-white-50">Another example of a project with its respective description. These sections work well responsively as well, try this theme on a small screen!</p>
-                                    <hr class="d-none d-lg-block mb-0 mr-0" />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section> -->
-
-        <!-- Signup-->
-        <!-- <section class="signup-section" id="signup">
-            <div class="container">
-                <div class="row">
-                    <div class="col-md-10 col-lg-8 mx-auto text-center">
-                        <i class="far fa-paper-plane fa-2x mb-2 text-white"></i>
-                        <h2 class="text-white mb-5">Subscribe to receive updates!</h2>
-                        <form class="form-inline d-flex">
-                            <input class="form-control flex-fill mr-0 mr-sm-2 mb-3 mb-sm-0" id="inputEmail" type="email" placeholder="Enter email address..." />
-                            <button class="btn btn-primary mx-auto" type="submit">Subscribe</button>
-                        </form>
-                    </div>
-                </div>
-            </div>
-        </section>
-         -->
-        <!-- Contact-->
-        <!-- <section class="contact-section bg-black">
-            <div class="container">
-                <div class="row">
-                    <div class="col-md-4 mb-3 mb-md-0">
-                        <div class="card py-4 h-100">
-                            <div class="card-body text-center">
-                                <i class="fas fa-map-marked-alt text-primary mb-2"></i>
-                                <h4 class="text-uppercase m-0">Address</h4>
-                                <hr class="my-4" />
-                                <div class="small text-black-50">4923 Market Street, Orlando FL</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-4 mb-3 mb-md-0">
-                        <div class="card py-4 h-100">
-                            <div class="card-body text-center">
-                                <i class="fas fa-envelope text-primary mb-2"></i>
-                                <h4 class="text-uppercase m-0">Email</h4>
-                                <hr class="my-4" />
-                                <div class="small text-black-50"><a href="#!">hello@yourdomain.com</a></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-4 mb-3 mb-md-0">
-                        <div class="card py-4 h-100">
-                            <div class="card-body text-center">
-                                <i class="fas fa-mobile-alt text-primary mb-2"></i>
-                                <h4 class="text-uppercase m-0">Phone</h4>
-                                <hr class="my-4" />
-                                <div class="small text-black-50">+1 (555) 902-8832</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="social d-flex justify-content-center">
-                    <a class="mx-2" href="#!"><i class="fab fa-twitter"></i></a>
-                    <a class="mx-2" href="#!"><i class="fab fa-facebook-f"></i></a>
-                    <a class="mx-2" href="#!"><i class="fab fa-github"></i></a>
-                </div>
-            </div>
-        </section> -->
 
         <!-- Footer-->
         <footer class="footer bg-black small text-center text-white-50"><div class="container">Copyright © Joseph Nelson
