@@ -47,12 +47,13 @@
         var content = this.nextElementSibling;
         if (content.style.maxHeight){
           content.style.maxHeight = null;
+          $(this).text("Tell Me More");
         } else {
           content.style.maxHeight = content.scrollHeight + "px";
+          $(this).text("More About Me");
         }
       });
     }
-
 
     // (function ($) {
     // "use strict"; // Start of use strict
