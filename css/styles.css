@@ -58,9 +58,9 @@ body {
   font-size: 1rem;
   font-weight: 400;
   line-height: 1.5;
-  color: #212529;
+  color: #313132;
   text-align: left;
-  background-color: #F5F6FA; // nice gray: F5F6FA; complement FAF9F5
+  background-color: #FFFFFF; // nice gray: F5F6FA; complement FAF9F5
   height: 100%; //added
 }
 
@@ -10398,7 +10398,7 @@ li{
 }
 
 .collapsible {
-  background-color: #F5F6FA;
+  background-color: #FFFFFF;
   cursor: pointer;
   width: 100%;
   border: none;
@@ -10417,7 +10417,8 @@ li{
   max-height: 0;
   overflow: hidden;
   transition: max-height 0.2s ease-out;
-  background-color: #F5F6FA;
+  background-color: #FFFFFF;
+  color: 313132;
 }
 
 .fit-image{
