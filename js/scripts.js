@@ -47,10 +47,10 @@
         var content = this.nextElementSibling;
         if (content.style.maxHeight){
           content.style.maxHeight = null;
-          $(this).text("Tell Me More");
+          $(this).text("Click to See Agenda");
         } else {
           content.style.maxHeight = content.scrollHeight + "px";
-          $(this).text("More About Me");
+          $(this).text("High Level Agenda");
         }
       });
     }
