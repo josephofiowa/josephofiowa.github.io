@@ -62,8 +62,8 @@ The frontend uses this custom API subdomain so session cookies are same-site.
 HTTP requests include credentials, CORS permits only the configured site
 origins, and WebSockets validate the same origin allowlist and owner cookie.
 Do not point the public frontend directly at `onrender.com`; cross-site cookie
-blocking can break session ownership. An unindexed backend root is available
-for initial same-host testing only after adding its origin explicitly if needed.
+blocking can break session ownership. The backend root returns the public game
+URL; use `/healthz` to check service availability before publishing the page.
 
 ## Initial beta limits
 

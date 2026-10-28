@@ -21,7 +21,7 @@ def build(destination, *, api_origin='https://pong-api.josephofiowa.com', vendor
     (destination / 'assets').mkdir(parents=True, exist_ok=True)
     (destination / 'vendor').mkdir(exist_ok=True)
     versions = {}
-    for source in (ROOT / 'web').iterdir():
+    for source in sorted((ROOT / 'web').iterdir()):
         if source.suffix not in ('.js', '.css'):
             continue
         shutil.copyfile(source, destination / 'assets' / source.name)

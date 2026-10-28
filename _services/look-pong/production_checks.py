@@ -58,6 +58,7 @@ def test_public_frontend_cors_cookie_and_secret_handling(rig):
     assert preflight.status_code == 200
     assert client.get('/healthz').json() == {'status': 'ok'}
     assert client.get('/healthz').headers['x-robots-tag'] == 'noindex'
+    assert client.get('/').json()['game_url'] == ORIGIN + '/look-pong/'
 
 
 def test_multiple_players_have_independent_sessions_and_capacity_is_bounded(rig):

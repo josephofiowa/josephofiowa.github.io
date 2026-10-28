@@ -90,7 +90,9 @@ class RevalidatedStaticFiles(StaticFiles):
         return response
 
 
-app = FastAPI(title="Look / Pong", lifespan=lifespan)
+app = FastAPI(title="Look / Pong", lifespan=lifespan,
+    docs_url=None if os.getenv("APP_ENV") == "production" else "/docs",
+    redoc_url=None if os.getenv("APP_ENV") == "production" else "/redoc")
 app.mount("/assets", RevalidatedStaticFiles(directory=ROOT / "web"), name="assets")
 app.include_router(streaming_router)
 origins = [value.strip() for value in os.getenv("PUBLIC_APP_ORIGINS", "").split(",") if value.strip()]
@@ -236,6 +238,8 @@ async def forget_calibration(profile_id: str, request: Request):
 
 @app.get("/")
 async def home():
+    if os.getenv("APP_ENV") == "production":
+        return JSONResponse({"game_url": "https://josephofiowa.com/look-pong/"})
     # Version the entire module graph, including the lazily loaded detector.
     # Otherwise Chrome can combine a fresh app with a cached older interface.
     assets = {f"/assets/{path.name}": f"/assets/{path.name}?v={hashlib.sha256(path.read_bytes()).hexdigest()[:16]}"
