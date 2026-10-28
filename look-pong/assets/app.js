@@ -62,12 +62,7 @@ function scheduleStartButtonPulse() {
 
 scheduleStartButtonPulse();
 
-const startupNotice = setTimeout(() => {
-  if ($('startup-status')) $('startup-status').textContent = 'Preparing eye tracking. The first visit may take about a minute.';
-}, 1500);
 const appConfig = loadConfig().then(config => {
-  clearTimeout(startupNotice);
-  if ($('startup-status')) $('startup-status').textContent = '';
   if (config.face_detector?.api_base?.startsWith('/')) {
     config.face_detector.api_base = new URL(config.face_detector.api_base, config.api_origin || location.origin).href;
   }
@@ -79,8 +74,7 @@ const appConfig = loadConfig().then(config => {
   if (!pageClosed && config.face_detector) prepareTracking(config);
   return config;
 }).catch(error => {
-  clearTimeout(startupNotice); transport = 'cloud-streaming';
-  if ($('startup-status')) $('startup-status').textContent = '';
+  transport = 'cloud-streaming';
   return { error: error.message };
 });
 
