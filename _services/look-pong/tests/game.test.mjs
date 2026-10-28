@@ -1347,3 +1347,161 @@ test('the policy is hidden until opened, and reading it never requests the camer
   assert.equal(f.$('terms-policy').classList.contains('hidden'), false);
   assert.equal(f.mediaRequests(), 0);
 });
+
+async function streamingGameFixture({ holdCleanup = false } = {}) {
+  const f = appFixture({ config: { processing: 'cloud', transport: 'cloud-streaming' } });
+  const sessions = [];
+  f.context.cloudFactory = options => {
+    let resolveReady, rejectReady, resolveClosed, resolveCleanup, results = 0;
+    const ready = new Promise((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
+    ready.catch(() => {});
+    const session = {
+      options, stopped: false, starts: 0, stops: 0,
+      closed: new Promise(resolve => { resolveClosed = resolve; }),
+      cleanup: holdCleanup ? new Promise(resolve => { resolveCleanup = resolve; }) : Promise.resolve(),
+      finishCleanup: () => resolveCleanup?.(),
+      async start() { this.starts++; await ready; },
+      stop() {
+        if (!this.stopped) { this.stopped = true; this.stops++; resolveClosed(); rejectReady(Error('stopped')); }
+        return this.cleanup;
+      },
+      deliver(force = false) {
+        const frame = options.context();
+        if (!force && (!frame.fresh || this.stopped)) return;
+        options.onPrediction({ captured_at: frame.captured_at, gazes: [{ yaw: .1, pitch: .2 }] }, frame, { frame_ms: 20 });
+        if (++results >= 3) resolveReady();
+      },
+      fail() { options.onError(Error('Connection interrupted')); this.stop(); },
+    };
+    sessions.push(session); return Promise.resolve(session);
+  };
+  f.run('createCloudGazeStream = options => cloudFactory(options);');
+  await f.click('enable-camera'); await flushAsync();
+  for (let i = 0; i < 3; i++) { f.advance(20); sessions[0].deliver(); }
+  await flushAsync();
+  assert.equal(f.run('cloudGazeReady'), true);
+  f.run(`calibration={mean:[0,0],scale:[1,1],x:[0,1,0],y:[0,0,1]}; calibrationId='retained-profile'; startRound();`);
+  assert.equal(f.run('state'), 'playing');
+  return { f, sessions, end: () => f.run('endGame({playerReturns:2,multiplier:1.2});') };
+}
+
+test('game over stops webcam publishing immediately and closes the idle cloud session after exactly five seconds', async () => {
+  const { f, sessions, end } = await streamingGameFixture();
+  const session = sessions[0];
+  assert.equal(session.options.context().fresh, true);
+  end();
+  assert.equal(session.options.context().fresh, false);
+  assert.equal(session.stops, 0);
+  f.advance(4999); assert.equal(session.stops, 0);
+  f.advance(1); assert.equal(session.stops, 1);
+  await flushAsync();
+  assert.equal(f.run('inferenceActive'), false);
+  assert.equal(f.run('cloudGazeStream'), null);
+  assert.equal(f.run('cloudGazeReady'), false);
+  assert.equal(f.run('calibrationId'), 'retained-profile');
+  assert.equal(f.track.readyState, 'live', 'the local preview stays available without uploading');
+  assert.equal(f.run('detectorFailed'), false, 'an intentional stop is not a connection error');
+  assert.match(f.$('webcam-note').textContent, /paused/);
+  f.advance(60000); await flushAsync();
+  session.deliver(true);
+  session.options.onError(Error('late close'));
+  assert.equal(sessions.length, 1, 'idle pages must never reconnect themselves');
+  assert.equal(f.run('cameraReady'), false, 'late results cannot reactivate tracking');
+  assert.equal(f.run('cloudConnectionError'), '');
+});
+
+for (const action of ['modal-primary', 'modal-secondary']) test(`${action} before the idle deadline reuses the live cloud connection and cancels shutdown`, async () => {
+  const { f, sessions, end } = await streamingGameFixture();
+  end(); f.advance(4999); f.click(action);
+  if (action === 'modal-primary') {
+    assert.equal(f.run('modalKind'), 'replay');
+    assert.equal(f.run('game.running'), false);
+    sessions[0].deliver();
+    assert.equal(f.run('state'), 'playing');
+  } else {
+    assert.equal(f.run('state'), 'calibration-ready');
+    assert.equal(f.run('targets.length'), 18);
+  }
+  f.advance(5001); await flushAsync();
+  assert.equal(sessions.length, 1);
+  assert.equal(sessions[0].stops, 0);
+  assert.equal(f.run('trackingSuspended'), false);
+  f.run('stopCamera()'); await flushAsync();
+});
+
+for (const action of ['modal-primary', 'modal-secondary']) test(`${action} after idle waits for remote cleanup, reconnects once, and waits for fresh results`, async () => {
+  const { f, sessions, end } = await streamingGameFixture({ holdCleanup: true });
+  end(); f.advance(5000); f.click(action);
+  await flushAsync();
+  assert.equal(sessions.length, 1, 'no second session while the first is releasing');
+  assert.equal(f.run('game.running'), false);
+  sessions[0].deliver(true);
+  assert.equal(f.run('cameraReady'), false, 'old session cannot unblock the next activity');
+  sessions[0].finishCleanup(); await flushAsync();
+  assert.equal(sessions.length, 2);
+  assert.equal(sessions[1].starts, 1);
+  assert.equal(f.run('cloudGazeReady'), false);
+  assert.equal(f.run('game.running'), false);
+  for (let i = 0; i < 2; i++) { f.advance(20); sessions[1].deliver(); }
+  await flushAsync();
+  assert.equal(f.run('game.running'), false, 'connection must demonstrate fresh gaze before starting');
+  f.advance(20); sessions[1].deliver(); await flushAsync();
+  if (action === 'modal-primary') {
+    assert.equal(f.run('state'), 'playing');
+    assert.equal(f.run('calibrationId'), 'retained-profile');
+  } else {
+    assert.equal(f.run('state'), 'calibration-ready');
+    assert.equal(f.run('targets.length'), 18);
+    assert.equal(f.run('calibrationId'), null);
+    assert.equal(f.$('start-calibration').disabled, false);
+  }
+  f.run('stopCamera()'); sessions[1].finishCleanup(); await flushAsync();
+});
+
+test('turning the camera off during idle cleanup cancels a pending Replay without reconnecting', async () => {
+  const { f, sessions, end } = await streamingGameFixture({ holdCleanup: true });
+  end(); f.advance(5000); f.click('modal-primary');
+  f.click('game-camera-stop');
+  sessions[0].finishCleanup(); await flushAsync();
+  assert.equal(sessions.length, 1);
+  assert.equal(f.run('state'), 'welcome');
+  assert.equal(f.run('inferenceActive'), false);
+  assert.equal(f.run('calibration'), null);
+  assert.equal(f.track.readyState, 'ended');
+  f.advance(10000); await flushAsync();
+  assert.equal(sessions.length, 1);
+});
+
+test('a second finished round gets its own five-second idle deadline', async () => {
+  const { f, sessions, end } = await streamingGameFixture();
+  end(); f.advance(1000); f.click('modal-primary');
+  end(); f.advance(4000); await flushAsync();
+  assert.equal(sessions[0].stops, 0);
+  f.advance(1000); await flushAsync();
+  assert.equal(sessions[0].stops, 1);
+});
+
+test('idle teardown still happens while the page is hidden', async () => {
+  const { f, sessions, end } = await streamingGameFixture();
+  end(); f.setHidden(true); f.advance(5000); await flushAsync();
+  assert.equal(sessions[0].stops, 1);
+  f.setHidden(false); await flushAsync();
+  assert.equal(sessions.length, 1);
+  assert.equal(f.run('state'), 'gameover');
+});
+
+test('a failed Replay reconnect can be retried without discarding calibration', async () => {
+  const { f, sessions, end } = await streamingGameFixture();
+  end(); f.advance(5000); await flushAsync();
+  f.click('modal-primary'); await flushAsync();
+  sessions[1].fail(); await flushAsync();
+  assert.equal(f.$('modal-primary').disabled, false);
+  assert.equal(f.$('modal-primary').textContent, 'Try again');
+  f.click('modal-primary'); f.advance(150); await flushAsync();
+  assert.equal(sessions.length, 3);
+  for (let i = 0; i < 3; i++) { f.advance(20); sessions[2].deliver(); }
+  await flushAsync();
+  assert.equal(f.run('state'), 'playing');
+  assert.equal(f.run('calibrationId'), 'retained-profile');
+  f.run('stopCamera()'); await flushAsync();
+});

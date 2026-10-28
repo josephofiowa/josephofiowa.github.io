@@ -22,6 +22,8 @@ let inferenceActive = false, activeRequest = null, stopped = false, processing =
 let browserFaceDetector = null, detectorEpoch = -1, detectorFailed = false;
 let transport = apiUrl('/api/config').startsWith('https://') ? 'cloud-streaming' : 'http';
 let cloudGazeStream = null, cloudGazeReady = false, cloudConnectionError = '';
+let trackingSuspended = false, trackingEpoch = 0, trackingShutdown = Promise.resolve();
+let idleTrackingTimer = null, idleTrackingDeadline = null;
 let trackingPreparation = null, preparationEpoch = 0, pageClosed = false;
 let latency = 0, gaze = null, lastGazeAt = 0, postureBad = false;
 let latencyBreakdown = null, lastInferenceStarted = -Infinity;
@@ -43,6 +45,7 @@ const CALIBRATION_GUIDANCE = "Look at the dot. It's ok to turn your head natural
 const CAMERA_FRAME_GAP_MS = 350;
 const FACE_MODEL_LOAD_MS = 60000;
 const GAZE_INTERVAL_MS = 125;
+const GAME_OVER_IDLE_MS = 5000;
 const game = new PongGame(endGame);
 
 function stopStartButtonPulse() {
@@ -223,7 +226,7 @@ async function enableCamera() {
   const epoch = ++cameraEpoch;
   const startup = new AbortController(); cameraStartup = startup;
   cameraAccessConfirmed = false; cameraPermissionStatus = null;
-  stopped = false; state = 'setup'; cameraReady = false;
+  stopped = false; trackingSuspended = false; state = 'setup'; cameraReady = false;
   calibration = null; resetFaceGuide(); gaze = null;
   setScreen('setup'); hideModal();
   $('retry-camera').classList.add('hidden');
@@ -392,6 +395,8 @@ function setupStatus(text, loading = false, good = false) {
 }
 
 function stopCamera() {
+  cancelIdleTrackingStop();
+  suspendTracking();
   targetSamples = []; calibrationPoints = []; calibrationViewport = null;
   captureContext.clearRect(0, 0, capture.width, capture.height);
   $('face-overlay').getContext('2d').clearRect(0, 0, $('face-overlay').width, $('face-overlay').height);
@@ -400,7 +405,7 @@ function stopCamera() {
   cameraAccessConfirmed = false; cameraPermissionStatus = null;
   cameraStartup?.abort(); cameraStartup = null;
   cancelTrackingPreparation();
-  cloudGazeStream?.stop(); cloudGazeStream = null; cloudGazeReady = false; cloudConnectionError = '';
+  cloudConnectionError = '';
   browserFaceDetector?.stop().catch(() => {}); browserFaceDetector = null;
   if (videoFrameCallback !== null) video.cancelVideoFrameCallback?.(videoFrameCallback);
   videoFrameCallback = null; videoFrameAt = -Infinity;
@@ -440,27 +445,83 @@ function updateFaceGuideCandidate(face, capturedAt) {
   latestFaceGuide = { ...face };
 }
 
+function cameraInferenceActive() {
+  return !stopped && !trackingSuspended && !document.hidden && (
+    ['setup', 'calibration-ready', 'calibration', 'saving-calibration', 'playing', 'countdown'].includes(state)
+    || (state === 'paused' && ['tracking', 'offline', 'replay'].includes(modalKind)));
+}
+
+function cancelIdleTrackingStop() {
+  clearTimeout(idleTrackingTimer);
+  idleTrackingTimer = null; idleTrackingDeadline = null;
+}
+
+function stopIdleTracking() {
+  if (idleTrackingDeadline === null) return;
+  const remaining = idleTrackingDeadline - performance.now();
+  if (remaining > 0) {
+    clearTimeout(idleTrackingTimer);
+    idleTrackingTimer = setTimeout(stopIdleTracking, remaining);
+    return;
+  }
+  cancelIdleTrackingStop();
+  suspendTracking();
+  webcam.classList.remove('tracking-warning');
+  $('webcam-note').textContent = 'Eye tracking is paused. Replay or recalibrate to reconnect.';
+  $('tracking-label').textContent = 'Eye tracking is idle';
+  $('latency-label').textContent = '—';
+}
+
+function suspendTracking() {
+  trackingSuspended = true; trackingEpoch++;
+  cameraReady = false; cloudGazeReady = false; gaze = null; lastGood = 0;
+  activeRequest?.abort();
+  const cloud = cloudGazeStream; cloudGazeStream = null;
+  // Stop publishing synchronously, then wait for remote cleanup before a new
+  // session can start. Keep the local preview, detector and calibration.
+  trackingShutdown = Promise.all([trackingShutdown, cloud?.stop()]).catch(() => {});
+}
+
+function resumeTracking() {
+  cancelIdleTrackingStop();
+  if (transport === 'cloud-streaming' && (cloudConnectionError || detectorFailed)) {
+    suspendTracking(); detectorFailed = false; cloudConnectionError = '';
+    if (!browserFaceDetector) detectorEpoch = -1;
+  }
+  trackingSuspended = false;
+  startInference();
+}
+
+async function createCloudGazeStream(options) {
+  const { CloudGazeStream } = await import('./cloud-stream.js');
+  return new CloudGazeStream(options);
+}
+
 async function startInference() {
-  if (inferenceActive) return;
+  if (inferenceActive || trackingSuspended || stopped) return;
   inferenceActive = true;
-  while (stream && !stopped) {
+  while (stream && !stopped && !trackingSuspended) {
+    await trackingShutdown;
+    if (!stream || stopped || trackingSuspended) break;
+    const epoch = cameraEpoch, tracking = trackingEpoch;
+    const current = () => epoch === cameraEpoch && tracking === trackingEpoch && !stopped && !trackingSuspended;
+    let preparedStream = null;
     if (detectorEpoch !== cameraEpoch) {
-      const epoch = cameraEpoch; detectorEpoch = epoch; detectorFailed = false;
+      detectorEpoch = epoch; detectorFailed = false;
       $('webcam-note').textContent = 'Starting eye tracking. Sit comfortably.';
       const config = await appConfig;
-      if (epoch !== cameraEpoch || stopped) continue;
+      if (!current()) continue;
       if (config.error) {
         cloudConnectionError = config.error; detectorFailed = true;
         loseTracking(config.error); $('webcam-note').textContent = config.error;
         continue;
       }
-      let preparedStream = null;
       if (config.face_detector) {
-        // Keep one detector throughout calibration and play. Switching crop
-        // models midway would invalidate the learned screen mapping.
+        // Reuse this detector for every round: changing crop models would
+        // invalidate the player's existing screen mapping.
         let expired = false, timer;
         const loading = takePreparedTracking(config).then(prepared => {
-          if (expired || epoch !== cameraEpoch || stopped) {
+          if (expired || !current()) {
             prepared.face?.stop().catch(() => {}); prepared.stream?.stop(); return null;
           }
           preparedStream = prepared.stream;
@@ -471,50 +532,62 @@ async function startInference() {
             transport === 'cloud-streaming' ? 120000 : FACE_MODEL_LOAD_MS);
         })]);
         clearTimeout(timer);
-        if (epoch !== cameraEpoch || stopped) continue;
+        if (!current()) continue;
         webcam.dataset.detector = browserFaceDetector?.modelId || 'opencv-haar-fallback';
-      }
-      if (transport === 'cloud-streaming') {
-        cloudGazeReady = false;
-        cloudConnectionError = '';
-        const showCloudError = error => {
-          if (epoch !== cameraEpoch || stopped) return;
-          cloudGazeReady = false;
-          cloudConnectionError = error.message;
-          loseTracking(error.message);
-          webcam.classList.add('tracking-warning'); $('webcam-note').textContent = error.message;
-          if (state === 'calibration') $('calibration-hint').textContent = error.message;
-          if (state === 'calibration-ready') $('calibration-ready-caption').textContent = error.message;
-        };
-        try {
-          const { CloudGazeStream } = await import('./cloud-stream.js');
-          if (epoch !== cameraEpoch || stopped) continue;
-          const options = { video, detector: browserFaceDetector,
-            context: () => ({ fresh: !document.hidden && hasFreshCameraFrame(), captured_at: videoFrameAt,
-              epoch: cameraEpoch, run: calibrationRun, token: targetToken, profile_id: calibrationId }),
-            onStatus: message => { if (epoch === cameraEpoch && !stopped) $('webcam-note').textContent = message; },
-            onError: showCloudError,
-            onPrediction: (data, frame, timing) => {
-              if (epoch !== cameraEpoch || stopped || frame.run !== calibrationRun || frame.profile_id !== calibrationId) return;
-              latency = timing.frame_ms;
-              latencyBreakdown = { frame_ms: latency, capture_ms: null, face_ms: browserFaceDetector?.detectionMs,
-                request_ms: null, server_ms: null, workflow_ms: timing.model_ms };
-              onPrediction(data, frame.token);
-            },
-          };
-          const cloud = preparedStream || new CloudGazeStream(options);
-          cloudGazeStream = cloud;
-          if (preparedStream) await cloud.attachCamera(options);
-          else await cloud.start();
-          if (epoch === cameraEpoch && !stopped) { cloudGazeReady = true; restartCalibrationReadyTimer(); }
-          await cloud.closed;
-        } catch (error) { cloudGazeStream?.stop(); showCloudError(error); }
-        if (epoch === cameraEpoch && !stopped) detectorFailed = true;
-        continue;
       }
     }
     if (detectorFailed) { await new Promise(r => setTimeout(r, 150)); continue; }
-    if (document.hidden || state === 'gameover' || (state === 'paused' && modalKind === 'manual')) {
+    if (transport === 'cloud-streaming') {
+      cloudGazeReady = false;
+      cloudConnectionError = '';
+      const showCloudError = error => {
+        if (!current()) return;
+        cloudGazeReady = false;
+        cloudConnectionError = error.message;
+        loseTracking(error.message);
+        webcam.classList.add('tracking-warning'); $('webcam-note').textContent = error.message;
+        if (state === 'calibration') $('calibration-hint').textContent = error.message;
+        if (state === 'calibration-ready') $('calibration-ready-caption').textContent = error.message;
+        if (state === 'paused' && modalKind === 'replay') {
+          $('modal-description').textContent = error.message;
+          $('modal-primary').textContent = 'Try again';
+          $('modal-primary').disabled = false;
+        }
+      };
+      let cloud;
+      try {
+        const options = { video, detector: browserFaceDetector,
+          context: () => ({ fresh: current() && cameraInferenceActive() && hasFreshCameraFrame(), captured_at: videoFrameAt,
+            epoch: cameraEpoch, run: calibrationRun, token: targetToken, profile_id: calibrationId }),
+          onStatus: message => { if (current() && cameraInferenceActive()) $('webcam-note').textContent = message; },
+          onError: showCloudError,
+          onPrediction: (data, frame, timing) => {
+            if (!current() || !cameraInferenceActive() || frame.run !== calibrationRun || frame.profile_id !== calibrationId) return;
+            latency = timing.frame_ms;
+            latencyBreakdown = { frame_ms: latency, capture_ms: null, face_ms: browserFaceDetector?.detectionMs,
+              request_ms: null, server_ms: null, workflow_ms: timing.model_ms };
+            onPrediction(data, frame.token);
+          },
+        };
+        cloud = preparedStream || await createCloudGazeStream(options);
+        if (!current()) { await cloud.stop(); continue; }
+        cloudGazeStream = cloud;
+        if (preparedStream) await cloud.attachCamera(options);
+        else await cloud.start();
+        if (current()) {
+          cloudGazeReady = true;
+          if (state === 'calibration-ready') restartCalibrationReadyTimer();
+          if (state === 'paused' && modalKind === 'replay' && canControlGame()) startRound();
+        }
+        await cloud.closed;
+      } catch (error) { await cloud?.stop(); showCloudError(error); }
+      if (cloudGazeStream === cloud) cloudGazeStream = null;
+      // An intentional idle stop is not a connection failure. A resumed loop
+      // will create a fresh session after trackingShutdown finishes.
+      if (current()) detectorFailed = true;
+      continue;
+    }
+    if (!cameraInferenceActive()) {
       await new Promise(r => setTimeout(r, 150)); continue;
     }
     if (!hasFreshCameraFrame()) {
@@ -526,7 +599,7 @@ async function startInference() {
     if (untilNextFrame > 0) { await new Promise(r => setTimeout(r, untilNextFrame)); continue; }
     lastInferenceStarted = performance.now();
     capturedFrameSequence = videoFrameSequence;
-    const epoch = cameraEpoch, run = calibrationRun, token = targetToken, profileId = calibrationId, capturedAt = videoFrameAt;
+    const run = calibrationRun, token = targetToken, profileId = calibrationId, capturedAt = videoFrameAt;
     const aspect = video.videoHeight / video.videoWidth;
     const height = Math.round(640 * aspect);
     if (capture.height !== height) capture.height = height;
@@ -547,19 +620,19 @@ async function startInference() {
         try {
           frame = await Promise.race([detector.capture(capture, capturedAt), new Promise((_, reject) => {
             abort = () => {
-              if (epoch === cameraEpoch && !stopped) { detectorFailed = true; detector.stop().catch(() => {}); }
+              if (current() && cameraInferenceActive()) { detectorFailed = true; detector.stop().catch(() => {}); }
               reject(new Error('Face tracking timed out. Restart your camera to try again.'));
             };
             signal.addEventListener('abort', abort, { once: true });
           })]);
         } finally { signal.removeEventListener('abort', abort); }
       } else frame = { image: capture.toDataURL('image/jpeg', 0.8).split(',')[1] };
-      if (epoch !== cameraEpoch || run !== calibrationRun || profileId !== calibrationId || !stream) continue;
+      if (!current() || !cameraInferenceActive() || run !== calibrationRun || profileId !== calibrationId || !stream) continue;
       if (!frame) { onPrediction({ captured_at: capturedAt, gazes: [] }, token); continue; }
       const requestStarted = performance.now();
       const response = await apiFetch('/api/gaze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...frame, captured_at: capturedAt, calibration_id: profileId }), signal: activeRequest.signal });
       const data = await response.json();
-      if (epoch !== cameraEpoch || run !== calibrationRun || profileId !== calibrationId || !stream) continue;
+      if (!current() || !cameraInferenceActive() || run !== calibrationRun || profileId !== calibrationId || !stream) continue;
       if (!response.ok) throw new Error(data.detail || 'Eye tracking is temporarily unavailable.');
       latency = performance.now() - capturedAt;
       latencyBreakdown = { frame_ms: latency, capture_ms: requestStarted - capturedAt,
@@ -568,7 +641,7 @@ async function startInference() {
       onPrediction(data, token);
     } catch (error) {
       clearTimeout(loadingNotice);
-      if (epoch !== cameraEpoch || run !== calibrationRun || profileId !== calibrationId || stopped) continue;
+      if (!current() || !cameraInferenceActive() || run !== calibrationRun || profileId !== calibrationId) continue;
       cameraReady = false;
       const message = error.name === 'AbortError' ? 'Eye tracking timed out. Check the Inference server and try again.' : error.message;
       webcam.classList.add('tracking-warning'); $('webcam-note').textContent = message;
@@ -580,10 +653,11 @@ async function startInference() {
   }
   inferenceActive = false;
   // A new camera can be enabled while an old aborted loop is unwinding.
-  if (stream && !stopped) startInference();
+  if (stream && !stopped && !trackingSuspended) startInference();
 }
 
 function onPrediction(data, token) {
+  if (!cameraInferenceActive()) return;
   // Old target/attempt frames cannot change a new point's tracking state.
   if (state === 'calibration' && (token !== targetToken || targetAdvanceAt !== null)) return;
   if (!hasFreshCameraFrame()) { loseTracking('Camera paused. Waiting for a live view of your eyes.'); return; }
@@ -648,6 +722,7 @@ function onPrediction(data, token) {
     $('modal-description').textContent = 'You’re back in view. Continue when you’re ready.';
     $('modal-primary').disabled = false;
   }
+  if (state === 'paused' && modalKind === 'replay' && (transport !== 'cloud-streaming' || cloudGazeReady)) startRound();
   $('tracking-label').textContent = 'Eye control is live';
   $('latency-label').textContent = `${Math.round(latency)} ms`;
   if (latencyBreakdown) {
@@ -866,7 +941,7 @@ function calibrationFailed(message) {
 function returnToSetup() {
   if (!stream) { enableCamera(); return; }
   prepareCalibration();
-  startInference();
+  resumeTracking();
 }
 
 function recalibrate() {
@@ -874,7 +949,19 @@ function recalibrate() {
   returnToSetup();
 }
 
+function replayRound() {
+  cancelIdleTrackingStop();
+  if (!trackingSuspended && !cloudConnectionError && !detectorFailed && canControlGame()) { startRound(); return; }
+  game.running = false; state = 'paused';
+  showModal({ kind: 'replay', label: 'GET READY', title: 'Preparing eye tracking.',
+    description: 'Your game starts as soon as eye tracking is ready.',
+    primary: 'Replay', secondary: 'Recalibrate', action: replayRound, secondaryAction: recalibrate });
+  $('modal-primary').disabled = true;
+  resumeTracking();
+}
+
 function startRound() {
+  cancelIdleTrackingStop();
   if (!calibration) { returnToSetup(); return; }
   game.reset(); state = 'playing'; game.running = true; setScreen('game-view'); hideModal();
   if (document.hidden) pauseGame('manual');
@@ -883,11 +970,14 @@ function startRound() {
 
 function endGame(result) {
   if (state !== 'playing') return;
-  state = 'gameover';
+  state = 'gameover'; game.running = false;
+  cancelIdleTrackingStop();
+  idleTrackingDeadline = performance.now() + GAME_OVER_IDLE_MS;
+  idleTrackingTimer = setTimeout(stopIdleTracking, GAME_OVER_IDLE_MS);
   showModal({ kind: 'gameover', label: 'THAT’S A WRAP', title: 'One more rally?',
     description: result.playerReturns ? 'A good rally starts with a little focus.' : 'Look toward the ball’s arrival point to meet it with your paddle.',
     stats: [[String(result.playerReturns).padStart(2, '0'), 'RETURNS'], [`${result.multiplier.toFixed(1)}×`, 'TOP SPEED']],
-    primary: 'Replay', secondary: 'Recalibrate', action: startRound, secondaryAction: recalibrate });
+    primary: 'Replay', secondary: 'Recalibrate', action: replayRound, secondaryAction: recalibrate });
 }
 
 function pauseGame(kind, message) {
@@ -954,6 +1044,7 @@ window.addEventListener('resize', () => {
 });
 
 document.addEventListener('visibilitychange', () => {
+  stopIdleTracking();
   if (document.hidden) { stopStartButtonPulse(); pauseGame('manual'); }
   else if (state === 'welcome') scheduleStartButtonPulse();
   if (state === 'calibration') resetTargetDwell();
@@ -974,12 +1065,11 @@ document.addEventListener('keydown', event => {
   }
 });
 window.addEventListener('pagehide', () => {
-  pageClosed = true; cancelTrackingPreparation();
+  pageClosed = true; cancelIdleTrackingStop(); suspendTracking(); cancelTrackingPreparation();
   stopStartButtonPulse(); clearCalibration(); stopped = true; cameraAccessConfirmed = false;
   targetSamples = []; calibrationPoints = []; gaze = null; lastFace = null; resetFaceGuide();
   captureContext.clearRect(0, 0, capture.width, capture.height);
   cameraStartup?.abort(); activeRequest?.abort(); stream?.getTracks().forEach(t => t.stop());
   if (videoFrameCallback !== null) video.cancelVideoFrameCallback?.(videoFrameCallback);
   browserFaceDetector?.stop().catch(() => {});
-  cloudGazeStream?.stop();
 });

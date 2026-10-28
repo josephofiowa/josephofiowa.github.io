@@ -167,6 +167,8 @@ export class CloudGazeStream {
             this.captureContext.drawImage(this.video, 0, 0, 640, height);
             const face = await this.detector.readFace(this.capture, metadata.captured_at);
             if (this.stopped) break;
+            // Game over or pause can happen while face detection is pending.
+            if (!this.context().fresh) continue;
             const sequence = this.ledger.record({ ...metadata, face_crop: face });
             this.paint.fillStyle = '#000'; this.paint.fillRect(0, TAG_HEIGHT, STREAM_WIDTH, STREAM_WIDTH);
             if (face) this.paint.drawImage(this.capture, face.x - face.width / 2, face.y - face.height / 2,
@@ -242,7 +244,7 @@ export class CloudGazeStream {
 
   async release() {
     if (!this.id) return;
-    try { await apiFetch(`/api/stream/sessions/${this.id}/stop`, { method: 'POST', keepalive: true }); } catch { /* Owner lease also expires if disconnected. */ }
+    try { await apiFetch(`/api/stream/sessions/${this.id}/stop`, { method: 'POST', keepalive: true, signal: AbortSignal.timeout(10000) }); } catch { /* Owner lease also expires if disconnected. */ }
   }
 
   async stop() {
