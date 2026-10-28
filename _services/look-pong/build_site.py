@@ -32,7 +32,6 @@ def build(destination, *, api_origin='https://pong-api.josephofiowa.com', vendor
     page = page.replace('href="/"', 'href="/look-pong/"')
     page = page.replace('/assets/', '/look-pong/assets/')
     page = page.replace('name="pong-api-origin" content=""', f'name="pong-api-origin" content="{html.escape(api_origin.rstrip("/"), quote=True)}"')
-    page = page.replace('Camera frames stay on this computer. No video is saved.', 'Camera frames are sent to Roboflow. No video is saved by this app.')
     for path, versioned in versions.items():
         page = page.replace(f'"{path}"', f'"{versioned}"')
     imports = {path: versioned for path, versioned in versions.items() if path.endswith('.js')}
