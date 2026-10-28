@@ -369,7 +369,7 @@ function appFixture(options = {}) {
   }
   const context = vm.createContext({ ...engine, URL, console, document, performance: { now: () => time },
     window: { innerWidth: 1280, innerHeight: 850, addEventListener() {} },
-    navigator: { permissions: options.permissions, mediaDevices: { getUserMedia: async () => {
+    navigator: { ...options.device, permissions: options.permissions, mediaDevices: { getUserMedia: async () => {
       mediaRequests++;
       return options.getUserMedia ? options.getUserMedia(media) : media;
     } } },
@@ -414,6 +414,83 @@ test('Get Started stays still for five seconds before pulsing', () => {
   assert.equal(f.$('enable-camera').classList.contains('is-idle'), false);
   f.advance(1);
   assert.equal(f.$('enable-camera').classList.contains('is-idle'), true);
+});
+
+test('a failed prepared connection surfaces its cause and offers retry without starting another session', async () => {
+  const f = appFixture({ config: { processing: 'cloud', transport: 'cloud-streaming', face_detector: { model_id: 'test-face' } } });
+  f.run(`prepareTracking = () => Promise.resolve(null);
+    takePreparedTracking = async () => ({ face: null, stream: null, error: Error('Connection timed out (gaze-results)') });
+    createCloudGazeStream = () => { throw Error('must not create a hidden second session'); };`);
+  await f.click('enable-camera'); await flushAsync();
+  assert.equal(f.run('state'), 'calibration-ready');
+  assert.equal(f.$('start-calibration').disabled, true);
+  assert.equal(f.$('retry-tracking').classList.contains('hidden'), false);
+  assert.match(f.$('calibration-ready-caption').textContent, /gaze-results/);
+  assert.match(f.$('webcam-note').textContent, /gaze-results/);
+  f.run("setTrackingStatus('late status from a model');");
+  assert.match(f.$('calibration-ready-caption').textContent, /gaze-results/, 'late status must not hide the error');
+  f.run('stopCamera();');
+});
+
+test('retry waits for previous preparation cleanup then reloads configuration and camera', async () => {
+  const f = appFixture({ config: { processing: 'cloud', transport: 'cloud-streaming', face_detector: { model_id: 'test-face' } },
+    getUserMedia: media => { media.active = true; media.getVideoTracks()[0].readyState = 'live'; return media; } });
+  f.run(`prepareTracking = () => Promise.resolve(null);
+    takePreparedTracking = async () => ({ face: null, stream: null, error: Error('face-model') });`);
+  await f.click('enable-camera'); await flushAsync();
+  let finishCleanup;
+  f.context.pendingCleanup = new Promise(resolve => { finishCleanup = resolve; });
+  f.run('trackingPreparation = Promise.resolve({ dispose: () => pendingCleanup });');
+  const retry = f.click('retry-tracking');
+  await flushAsync();
+  assert.equal(f.mediaRequests(), 1, 'a retry cannot open resources while old cleanup is pending');
+  assert.equal(f.requests.filter(r => r.url.endsWith('/api/config')).length, 1);
+  finishCleanup(); await retry; await flushAsync();
+  assert.equal(f.mediaRequests(), 2);
+  assert.equal(f.requests.filter(r => r.url.endsWith('/api/config')).length, 2);
+  assert.equal(f.run('cloudConnectionError'), '');
+  assert.equal(f.$('retry-tracking').classList.contains('hidden'), true);
+  f.run('stopCamera();');
+});
+
+test('loading progress stays off the homepage and identifies the stage after Get Started', async () => {
+  const f = appFixture({ config: { processing: 'cloud', transport: 'cloud-streaming' } });
+  f.run("setTrackingStatus('Loading face detection…'); createCloudGazeStream = () => new Promise(() => {});");
+  assert.equal(f.run('state'), 'welcome');
+  assert.notEqual(f.$('webcam-note').textContent, 'Loading face detection…');
+  await f.click('enable-camera'); await flushAsync();
+  f.run("setTrackingStatus('Finding your face and gaze.');");
+  assert.equal(f.$('webcam-note').textContent, 'Finding your face and gaze.');
+  assert.equal(f.$('calibration-ready-caption').textContent, 'Finding your face and gaze.');
+  f.run('stopCamera();');
+});
+
+test('retry recovers from startup failure and enables calibration after fresh gaze arrives', async () => {
+  const f = appFixture({ config: { processing: 'cloud', transport: 'cloud-streaming', face_detector: { model_id: 'test-face' } },
+    getUserMedia: media => { media.active = true; media.getVideoTracks()[0].readyState = 'live'; return media; } });
+  let attempts = 0, close;
+  const cloud = { closed: new Promise(resolve => { close = resolve; }), stop: async () => close(),
+    async attachCamera(options) {
+      for (let i = 0; i < 3; i++) {
+        f.advance(20);
+        const frame = options.context();
+        options.onPrediction({ captured_at: frame.captured_at, gazes: [{ yaw: .1, pitch: .2 }] }, frame, { frame_ms: 20 });
+      }
+    } };
+  f.context.preparedResult = async () => ++attempts === 1
+    ? { face: null, stream: null, error: Error('temporary startup failure') }
+    : { face: { modelId: 'test-face', stop: async () => {} }, stream: cloud };
+  f.run('prepareTracking = () => Promise.resolve(null); takePreparedTracking = () => preparedResult();');
+  await f.click('enable-camera'); await flushAsync();
+  assert.equal(f.$('retry-tracking').classList.contains('hidden'), false);
+  await f.click('retry-tracking');
+  f.advance(150); await flushAsync();
+  assert.equal(attempts, 2);
+  assert.equal(f.run('cloudGazeReady'), true);
+  assert.equal(f.$('start-calibration').disabled, false);
+  assert.equal(f.$('retry-tracking').classList.contains('hidden'), true);
+  assert.equal(f.run('cloudConnectionError'), '');
+  f.run('stopCamera();');
 });
 
 test('a Render cold start cannot start calibration before configuration and tracking are ready', async () => {
@@ -1503,5 +1580,57 @@ test('a failed Replay reconnect can be retried without discarding calibration', 
   await flushAsync();
   assert.equal(f.run('state'), 'playing');
   assert.equal(f.run('calibrationId'), 'retained-profile');
+  f.run('stopCamera()'); await flushAsync();
+});
+
+const mobileDevices = [
+  ['iPhone Safari', { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1' }],
+  ['iPhone Chrome', { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 CriOS/130.0.0.0 Mobile/15E148 Safari/604.1' }],
+  ['Android phone', { userAgent: 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/130.0.0.0 Mobile Safari/537.36' }],
+  ['Android tablet', { userAgent: 'Mozilla/5.0 (Linux; Android 15; Tablet) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36' }],
+  ['iPad desktop mode', { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15', platform: 'MacIntel', maxTouchPoints: 5 }],
+  ['mobile client hints', { userAgent: '', userAgentData: { mobile: true } }],
+];
+
+for (const [name, device] of mobileDevices) test(`${name} never requests tracking configuration, models, or camera access`, async () => {
+  const f = appFixture({ device, config: { processing: 'cloud', transport: 'cloud-streaming', face_detector: { model_id: 'test-face' } } });
+  await flushAsync();
+  assert.equal(f.run('mobileDevice'), true);
+  assert.equal(f.requests.length, 0, 'mobile must not contact the tracking backend even on page load');
+  assert.equal(f.run('trackingPreparation'), null);
+  assert.equal(f.mediaRequests(), 0);
+  assert.equal(f.$('modal').classList.contains('hidden'), true, 'show guidance only after Get Started');
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await f.click('enable-camera');
+    assert.equal(f.run('state'), 'welcome');
+    assert.equal(f.$('webcam').classList.contains('hidden'), true);
+    assert.equal(f.$('modal').classList.contains('hidden'), false);
+    assert.equal(f.$('modal-title').textContent, 'Sorry! This game is only available on desktop for now.');
+    assert.equal(f.$('modal-description').textContent, 'Play in desktop Chrome for best results');
+    f.advance(10000); await flushAsync();
+    assert.equal(f.mediaRequests(), 0);
+    assert.equal(f.requests.length, 0);
+    assert.equal(f.run('trackingPreparation'), null);
+    f.click('modal-primary');
+    assert.equal(f.$('modal').classList.contains('hidden'), true);
+  }
+  assert.equal(await f.run('prepareTracking({face_detector:{model_id:"test-face"}})'), null);
+  await f.run('startInference()');
+  assert.equal(f.run('inferenceActive'), false);
+  assert.equal(f.requests.length, 0);
+});
+
+for (const [name, device] of [
+  ['Mac', { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36', platform: 'MacIntel', maxTouchPoints: 0 }],
+  ['Windows touch laptop', { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36', platform: 'Win32', maxTouchPoints: 10 }],
+]) test(`${name} keeps desktop startup even in a narrow window`, async () => {
+  const f = appFixture({ device });
+  f.run('window.innerWidth=390;');
+  await flushAsync();
+  assert.equal(f.run('mobileDevice'), false);
+  assert.ok(f.requests.some(request => request.url === '/api/config'));
+  await f.click('enable-camera');
+  assert.equal(f.mediaRequests(), 1);
+  assert.equal(f.run('state'), 'calibration-ready');
   f.run('stopCamera()'); await flushAsync();
 });

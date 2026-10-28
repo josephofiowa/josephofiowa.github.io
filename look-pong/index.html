@@ -9,7 +9,7 @@
   <meta name="description" content="A game of focus. Play 3D Pong with your eyes.">
   <title>Look / Pong — A game of focus</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23d4f58a'/%3E%3Cellipse cx='32' cy='32' rx='23' ry='14' fill='none' stroke='%2326382f' stroke-width='4'/%3E%3Ccircle cx='32' cy='32' r='7' fill='%2326382f'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/look-pong/assets/style.css?v=fb9491b3b5d79831">
+  <link rel="stylesheet" href="/look-pong/assets/style.css?v=ca7007b114ffea8f">
 </head>
 <body>
   <header id="site-header" class="site-header">
@@ -78,6 +78,7 @@
           <button id="start-calibration" class="primary-button calibration-start-button">Start Calibration<svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M10 6 25 16 10 26Z"/></svg></button>
           <div class="calibration-ready-track" aria-hidden="true"><span id="calibration-ready-progress"></span></div>
           <p id="calibration-ready-caption">Starts automatically in 3 seconds</p>
+          <button id="retry-tracking" class="quiet-button hidden">Retry eye tracking</button>
         </div>
       </div>
       <div class="calibration-instructions">
@@ -105,7 +106,7 @@
 
     <div id="toast" class="toast hidden" role="status"></div>
   </main>
-  <script type="importmap">{"imports": {"/look-pong/assets/api-client.js": "/look-pong/assets/api-client.js?v=a83807f9632f7678", "/look-pong/assets/app.js": "/look-pong/assets/app.js?v=fccde5080d39209c", "/look-pong/assets/cloud-stream.js": "/look-pong/assets/cloud-stream.js?v=53caacc4f366c7a4", "/look-pong/assets/engine.js": "/look-pong/assets/engine.js?v=20130c30b4685540", "/look-pong/assets/face-detector.js": "/look-pong/assets/face-detector.js?v=55201ab34cc01dc6", "/look-pong/assets/tracking-preparation.js": "/look-pong/assets/tracking-preparation.js?v=ac14050f3bbb7743", "/look-pong/vendor/inference.es.js": "/look-pong/vendor/inference.es.js?v=474780c9ac0a5add"}}</script>
-  <script type="module" src="/look-pong/assets/app.js?v=fccde5080d39209c"></script>
+  <script type="importmap">{"imports": {"/look-pong/assets/api-client.js": "/look-pong/assets/api-client.js?v=a83807f9632f7678", "/look-pong/assets/app.js": "/look-pong/assets/app.js?v=d90a432fd702c930", "/look-pong/assets/cloud-stream.js": "/look-pong/assets/cloud-stream.js?v=04ef1db5e2e353a2", "/look-pong/assets/engine.js": "/look-pong/assets/engine.js?v=20130c30b4685540", "/look-pong/assets/face-detector.js": "/look-pong/assets/face-detector.js?v=55201ab34cc01dc6", "/look-pong/assets/tracking-preparation.js": "/look-pong/assets/tracking-preparation.js?v=f3d06b51a73af7bf", "/look-pong/vendor/inference.es.js": "/look-pong/vendor/inference.es.js?v=474780c9ac0a5add"}}</script>
+  <script type="module" src="/look-pong/assets/app.js?v=d90a432fd702c930"></script>
 </body>
 </html>

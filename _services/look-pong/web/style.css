@@ -877,6 +877,16 @@ button:focus-visible,a:focus-visible {
   font-size:43px;
   margin-top:19px;
 }
+.modal-backdrop.desktop-only {
+  overflow-y:auto;
+}
+.desktop-only .modal-card {
+  margin:auto;
+}
+.desktop-only .modal-card h2 {
+  font-size:clamp(25px,6vw,36px);
+  margin-top:0;
+}
 .modal-card p {
   font-size:13px;
   color:#7c8873;
