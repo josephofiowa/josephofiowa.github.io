@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: look-pong-api
+    runtime: python
+    plan: free
+    region: oregon
+    branch: codex/deploy-look-pong
+    rootDir: _services/look-pong
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn production:app --host 0.0.0.0 --port $PORT --workers 1 --proxy-headers
+    healthCheckPath: /healthz
+    autoDeployTrigger: "off"
+    envVars:
+      - key: ROBOFLOW_API_KEY
+        sync: false
+      - key: ROBOFLOW_PUBLISHABLE_KEY
+        sync: false

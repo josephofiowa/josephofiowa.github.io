@@ -1,0 +1,4 @@
+# The backend is deployed by Render; GitHub Pages publishes the static game.
+exclude:
+  - _services
+  - render.yaml
