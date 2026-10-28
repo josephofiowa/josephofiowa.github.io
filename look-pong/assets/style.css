@@ -1173,6 +1173,3 @@ button:focus-visible,a:focus-visible {
   position:relative;
   z-index:1;
 }
-
-.startup-status { position: fixed; bottom: 18px; left: 5%; width: 90%; text-align: center; color: #5e7051; font-size: 14px; pointer-events: none; z-index: 30; }
-.startup-status:empty { display: none; }
