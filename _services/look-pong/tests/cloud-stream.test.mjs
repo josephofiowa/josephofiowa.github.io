@@ -78,3 +78,56 @@ test('synthetic warmup results never enter calibration and camera attachment wai
   assert.ok(stream.ledger.sequence > preparedSequence);
   assert.equal(stream.prewarming, false);
 });
+
+for (const stopDuringDetection of [false, true]) test(`a pending face detection cannot publish after ${stopDuringDetection ? 'session shutdown' : 'game over'}`, async t => {
+  const previous = globalThis.document;
+  globalThis.document = { createElement: () => ({ getContext: () => ({ drawImage() {}, fillRect() {} }) }) };
+  t.after(() => { globalThis.document = previous; });
+  let fresh = true, resolveFace, published = 0;
+  const stream = new CloudGazeStream({ video: { currentTime: 1, videoWidth: 640, videoHeight: 480 },
+    context: () => ({ fresh, captured_at: performance.now() }),
+    detector: { readFace: () => new Promise(resolve => { resolveFace = resolve; }) } });
+  stream.track = { requestFrame: () => published++ };
+  const loop = stream.publishFrames();
+  fresh = false;
+  if (stopDuringDetection) await stream.stop();
+  resolveFace({ x: 320, y: 240, width: 180, height: 180 });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(published, 0);
+  assert.equal(stream.ledger.frames.size, 0);
+  await stream.stop(); await loop;
+});
+
+test('stopping a stream closes every transport, cancels scheduled work, and requests remote teardown once', async t => {
+  const previousDocument = globalThis.document, previousFetch = globalThis.fetch;
+  globalThis.document = { querySelector: () => null, createElement: () => ({ getContext: () => ({}) }) };
+  t.after(() => { globalThis.document = previousDocument; globalThis.fetch = previousFetch; });
+  const calls = [];
+  let finishStop;
+  globalThis.fetch = (url, options) => {
+    calls.push({ url, options });
+    return new Promise(resolve => { finishStop = resolve; });
+  };
+  const stream = new CloudGazeStream(); stream.id = 'session-to-release';
+  stream.pc = { close: () => calls.push('peer-close') };
+  stream.ws = { close: () => calls.push('socket-close') };
+  stream.media = { getTracks: () => [{ stop: () => calls.push('video-stop') }] };
+  for (const timer of ['frameTimer', 'statusTimer', 'warmupTimer', 'disconnectTimer', 'heartbeat']) {
+    stream[timer] = setTimeout(() => calls.push(`unexpected-${timer}`), 10);
+  }
+  const stopped = stream.stop(), stoppedAgain = stream.stop();
+  await stream.closed;
+  assert.equal(stream.stopped, true);
+  assert.equal(stream.abort.signal.aborted, true);
+  assert.deepEqual(calls.slice(0, 3), ['peer-close', 'socket-close', 'video-stop']);
+  assert.equal(calls[3].url, '/api/stream/sessions/session-to-release/stop');
+  assert.equal(calls[3].options.method, 'POST');
+  assert.equal(calls[3].options.keepalive, true);
+  assert.equal(calls[3].options.credentials, 'include');
+  let released = false; stopped.then(() => { released = true; });
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(calls.length, 4, 'no timers or repeated stop calls should publish or reconnect');
+  assert.equal(released, false, 'the next connection must wait until remote teardown completes');
+  finishStop({ ok: true }); await Promise.all([stopped, stoppedAgain]);
+  assert.equal(released, true);
+});
