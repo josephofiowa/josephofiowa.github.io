@@ -56,6 +56,7 @@ async def lifespan(app):
     app.state.calibrations = {}
     app.state.streaming = CloudStreaming(app.state.client)
     maintenance = asyncio.create_task(app.state.streaming.maintain())
+    calibration_maintenance = asyncio.create_task(maintain_calibrations())
     callback_server = callback_task = None
     if app.state.streaming.enabled and os.getenv("CLOUD_CALLBACK_INLINE") != "1":
         import uvicorn
@@ -75,7 +76,9 @@ async def lifespan(app):
         yield
     finally:
         maintenance.cancel()
-        await asyncio.gather(maintenance, return_exceptions=True)
+        calibration_maintenance.cancel()
+        await asyncio.gather(maintenance, calibration_maintenance, return_exceptions=True)
+        app.state.calibrations.clear()
         await app.state.streaming.close()
         if callback_server:
             callback_server.should_exit = True
@@ -183,6 +186,13 @@ def expire_calibrations():
     for key, profile in list(app.state.calibrations.items()):
         if profile["expires_at"] <= now:
             del app.state.calibrations[key]
+
+
+async def maintain_calibrations():
+    # A failed tab-close request must not leave calibration in RAM indefinitely.
+    while True:
+        await asyncio.sleep(60)
+        expire_calibrations()
 
 
 @app.post("/api/calibration")

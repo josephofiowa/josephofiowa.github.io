@@ -236,6 +236,8 @@ class CloudStreaming:
 
     async def stop(self, session):
         session.closed = True
+        while not session.queue.empty():
+            session.queue.get_nowait()
         async with session.cleanup_lock:
             await self._stop(session)
 

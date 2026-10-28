@@ -191,8 +191,10 @@ def test_concurrent_stop_calls_do_not_leave_a_false_cleanup_failure(rig):
     client, manager, calls, _ = rig
     identifier = connect(client)
     client.post(f'/api/stream/sessions/{identifier}/start')
+    manager.sessions[identifier].queue.put_nowait({'prediction': {'gazes': [{'yaw': .1, 'pitch': .2}]}})
     async def stop_twice():
         await asyncio.gather(manager.stop(manager.sessions[identifier]), manager.stop(manager.sessions[identifier]))
     asyncio.run(stop_twice())
     assert manager.sessions[identifier].state == 'stopped'
+    assert manager.sessions[identifier].queue.empty()
     assert len([call for call in calls if call.url.path.endswith('/stop-session')]) == 1

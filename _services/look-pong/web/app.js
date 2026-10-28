@@ -104,7 +104,17 @@ async function takePreparedTracking(config) {
   return prepared ? prepared.take() : { face: null, stream: null };
 }
 
+function setPolicyOpen(open, moveFocus = true) {
+  $('terms-policy').classList.toggle('hidden', !open);
+  $('footer-policy-toggle').setAttribute('aria-expanded', String(open));
+  if (open && moveFocus) {
+    $('terms-heading').focus({ preventScroll: true });
+    $('terms-policy').scrollIntoView({ block: 'start', behavior: 'instant' });
+  } else if (moveFocus) $('footer-policy-toggle').focus();
+}
+
 function setScreen(id) {
+  setPolicyOpen(false, false);
   if (id === 'welcome') scheduleStartButtonPulse();
   else stopStartButtonPulse();
   screens.forEach(name => $(name).classList.toggle('hidden', name !== id));
@@ -165,6 +175,8 @@ function hideModal() {
 $('modal-primary').addEventListener('click', () => primaryAction?.());
 $('modal-secondary').addEventListener('click', () => secondaryAction?.());
 $('enable-camera').addEventListener('click', enableCamera);
+$('footer-policy-toggle').addEventListener('click', () => setPolicyOpen($('terms-policy').classList.contains('hidden')));
+$('close-policy').addEventListener('click', () => setPolicyOpen(false));
 $('enable-camera').addEventListener('pointerdown', stopStartButtonPulse);
 $('retry-camera').addEventListener('click', enableCamera);
 $('start-calibration').addEventListener('click', beginCalibration);
@@ -380,6 +392,9 @@ function setupStatus(text, loading = false, good = false) {
 }
 
 function stopCamera() {
+  targetSamples = []; calibrationPoints = []; calibrationViewport = null;
+  captureContext.clearRect(0, 0, capture.width, capture.height);
+  $('face-overlay').getContext('2d').clearRect(0, 0, $('face-overlay').width, $('face-overlay').height);
   stopped = true; cameraEpoch++; calibrationRun++; targetToken = '';
   extendedCalibration = false;
   cameraAccessConfirmed = false; cameraPermissionStatus = null;
@@ -961,6 +976,8 @@ document.addEventListener('keydown', event => {
 window.addEventListener('pagehide', () => {
   pageClosed = true; cancelTrackingPreparation();
   stopStartButtonPulse(); clearCalibration(); stopped = true; cameraAccessConfirmed = false;
+  targetSamples = []; calibrationPoints = []; gaze = null; lastFace = null; resetFaceGuide();
+  captureContext.clearRect(0, 0, capture.width, capture.height);
   cameraStartup?.abort(); activeRequest?.abort(); stream?.getTracks().forEach(t => t.stop());
   if (videoFrameCallback !== null) video.cancelVideoFrameCallback?.(videoFrameCallback);
   browserFaceDetector?.stop().catch(() => {});

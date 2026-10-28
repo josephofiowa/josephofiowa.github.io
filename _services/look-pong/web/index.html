@@ -33,7 +33,30 @@
         <canvas id="hero-court" aria-label="Preview of the three-dimensional Pong court"></canvas>
         <div class="visual-bottom"><span><i class="mini-paddle"></i>Look to move. Keep the ball alive.</span><span>↖ ↗ ↙ ↘</span></div>
       </div>
-      <div class="welcome-footer"><span>Made for a bright screen & a comfortable seat.</span><span>Built as a <a href="https://onlinelibrary.wiley.com/doi/10.1002/lary.31267">medical research</a> proof of concept.</span></div>
+      <div class="welcome-footer"><span>Made for a bright screen & a comfortable seat.</span><button id="footer-policy-toggle" class="policy-toggle" aria-expanded="false" aria-controls="terms-policy">Terms of Use &amp; Privacy Policy</button><span>Built as a <a href="https://onlinelibrary.wiley.com/doi/10.1002/lary.31267">medical research</a> proof of concept.</span></div>
+    </section>
+
+    <section id="terms-policy" class="terms-policy hidden" aria-labelledby="terms-heading">
+      <div class="policy-content">
+        <h2 id="terms-heading" tabindex="-1">Terms of Use &amp; Privacy Policy</h2>
+        <p class="policy-intro">Look Pong is a fun game made as a research prototype to explore expanding access to medical research, like <a href="https://onlinelibrary.wiley.com/doi/10.1002/lary.31267">this eye-tracking study</a>. Playing does not enroll you in a research study. This game is not medical care, a diagnostic tool, or an endorsement by the study’s authors.</p>
+        <p class="policy-date">Updated October 27, 2026</p>
+        <h3>Who can play and what you agree to</h3>
+        <p>You must be at least 18 and must not live in or currently be in Illinois. Illinois users are not permitted to play this prototype. Click <strong>Get Started</strong> to agree to these terms and expressly consent to the collection, use, and transmission described below. If you do not agree, do not start. Use only your own camera and keep other people out of view.</p>
+        <h3>How your camera is used</h3>
+        <p>With your permission, the game processes camera images, your face’s position, eye movements, and calibration coordinates to map your gaze to the screen and move your paddle. These measurements may be biometric data. Face detection runs in your browser; face images are streamed to <a href="https://roboflow.com/privacy">Roboflow</a> to estimate gaze. Our backend on <a href="https://render.com/privacy">Render</a> processes the returned estimates and calibration. We do not request microphone access, identify you by your face, or use your play for medical decisions.</p>
+        <p>On page load, we download models and prepare a connection using artificial test frames. Your camera is not opened or sent to Roboflow until you click Get Started and grant camera permission.</p>
+        <h3>No saved recordings; temporary processing only</h3>
+        <p>We do not save your webcam images, video, face measurements, or gaze data to files, a database, or a research dataset. We do not sell them, use them for advertising, or train models on them. Processing still requires temporary data in memory: the browser holds your current images and calibration, and our server holds gaze results and calibration while you play.</p>
+        <p>Turning the camera off or closing this page stops capture and requests deletion of your server calibration. If that request cannot reach us, calibration expires after two hours without use and is removed by a cleanup check that runs every minute. The browser clears its session data when you turn the camera off or close the page. Roboflow <a href="https://roboflow.com/blog/inference-1-0">states that it does not store inference inputs or outputs</a>; its privacy policy governs its own service data.</p>
+        <h3>Connection data and cookies</h3>
+        <p>A necessary session cookie keeps your streaming connection associated with your browser. It does not contain camera images or gaze readings. Our hosting and processing providers—<a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub</a>, Render, and Roboflow—may keep ordinary technical records such as IP addresses, request times, browser information, and errors under their policies. The no-recording promise does not mean that these technical records never exist.</p>
+        <h3>Your choice and basic terms</h3>
+        <p>Withdraw consent at any time by choosing <strong>Turn camera off</strong> or <strong>Camera off</strong>, or by closing this page. Hiding the preview or pausing play does not stop camera processing. You can also revoke camera permission in your browser. This experimental game is provided as is, may be inaccurate or unavailable, and should be used only for recreation. Do not bypass its eligibility restrictions or interfere with the service. Nothing here waives privacy rights or other protections that the law does not allow you to waive.</p>
+        <h3>Questions</h3>
+        <p>For questions or privacy requests, contact the name of this game @ josephofiowa.com.</p>
+        <button id="close-policy" class="text-link">Close policy</button>
+      </div>
     </section>
 
     <section id="setup" class="screen setup hidden">

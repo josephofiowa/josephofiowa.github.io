@@ -327,6 +327,7 @@ function appFixture(options = {}) {
     getClientRects() { return [{}]; }
     focus() { document.activeElement = this; }
     setAttribute() {}
+    scrollIntoView() {}
     getContext() {
       this.drawCalls ??= [];
       this.drawingContext ??= new Proxy({}, { get: (object, key) => object[key] ?? ((...args) => {
@@ -1330,4 +1331,19 @@ for (const failure of ['empty gaze', 'muted camera', 'stalled camera', 'stale re
   assert.equal(f.run('game.ball.z'), .17);
   assert.equal(f.run('game.running'), false);
   assert.equal(f.$('modal-primary').disabled, true);
+});
+
+
+
+test('the policy is hidden until opened, and reading it never requests the camera', () => {
+  const f = appFixture();
+  assert.equal(f.$('terms-policy').classList.contains('hidden'), true);
+  f.click('footer-policy-toggle');
+  assert.equal(f.$('terms-policy').classList.contains('hidden'), false);
+  assert.equal(f.run('document.activeElement.id'), 'terms-heading');
+  f.click('close-policy');
+  assert.equal(f.$('terms-policy').classList.contains('hidden'), true);
+  f.click('footer-policy-toggle');
+  assert.equal(f.$('terms-policy').classList.contains('hidden'), false);
+  assert.equal(f.mediaRequests(), 0);
 });

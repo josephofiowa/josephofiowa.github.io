@@ -304,3 +304,23 @@ def test_browser_config_exposes_only_the_publishable_key_and_exact_model_id(monk
         assert config.json()["face_detector"]["publishable_key"] == "rf_browser-safe"
         monkeypatch.setenv("ROBOFLOW_PUBLISHABLE_KEY", "private-server-secret")
         assert client.get("/api/config").json()["face_detector"] is None
+
+
+def test_expired_calibration_is_cleaned_without_another_http_request(monkeypatch):
+    import asyncio
+    import time
+    web_app.app.state.calibrations = {
+        "expired": {"expires_at": 0},
+        "current": {"expires_at": time.monotonic() + 7200},
+    }
+    ticks = []
+    async def tick(seconds):
+        ticks.append(seconds)
+        if len(ticks) > 1:
+            raise asyncio.CancelledError()
+    monkeypatch.setattr(web_app.asyncio, "sleep", tick)
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(web_app.maintain_calibrations())
+    assert ticks == [60, 60]
+    assert set(web_app.app.state.calibrations) == {"current"}
+    web_app.app.state.calibrations.clear()
