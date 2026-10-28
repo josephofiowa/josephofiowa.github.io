@@ -68,9 +68,6 @@ const appConfig = loadConfig().then(config => {
   }
   processing = config.processing;
   transport = config.transport || 'http';
-  $('privacy-copy').textContent = processing === 'local'
-    ? 'Camera frames stay on this computer. No video is saved.'
-    : 'Camera frames are sent to Roboflow. No video is saved by this app.';
   if (!pageClosed && config.face_detector) prepareTracking(config);
   return config;
 }).catch(error => {

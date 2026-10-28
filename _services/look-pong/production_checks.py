@@ -152,7 +152,7 @@ def test_pages_export_scopes_assets_and_versions_modules_without_private_files(t
     assert '<meta name="robots" content="noindex">' in page
     assert 'content="https://pong-api.josephofiowa.com"' in page
     assert 'href="/look-pong/"' in page
-    assert 'Camera frames are sent to Roboflow.' in page
+    assert 'Built as a <a href="https://onlinelibrary.wiley.com/doi/10.1002/lary.31267">medical research</a> proof of concept.' in page
     assert 'href="/assets/' not in page and 'src="/assets/' not in page
     imports = json.loads(re.search(r'<script type="importmap">(.*?)</script>', page)[1])['imports']
     for path, url in imports.items():
