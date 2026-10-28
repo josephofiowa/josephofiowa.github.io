@@ -38,7 +38,7 @@ const additionalTargets = [[.3, .36], [.5, .36], [.7, .36], [.7, .52], [.7, .68]
 let extendedCalibration = false;
 let targets = initialTargets.map(point => [...point]);
 const CALIBRATION_GAP_MS = 800;
-const CALIBRATION_PREVIEW_MS = 5000;
+const CALIBRATION_PREVIEW_MS = 3000;
 const CALIBRATION_GUIDANCE = "Look at the dot. It's ok to turn your head naturally";
 const CAMERA_FRAME_GAP_MS = 350;
 const FACE_MODEL_LOAD_MS = 60000;
@@ -738,7 +738,7 @@ function restartCalibrationReadyTimer() {
 
 function calibrationCanStart() {
   // Local inference can warm up on the first dot. Cloud streaming must first
-  // connect and demonstrate fresh results, before the five-second timer runs.
+  // connect and demonstrate fresh results, before the three-second timer runs.
   return cameraAccessConfirmed && hasFreshCameraFrame() && (transport !== 'cloud-streaming' || cloudGazeReady);
 }
 
