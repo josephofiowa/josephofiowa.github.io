@@ -1,0 +1,148 @@
+{
+  "version": "1.0",
+  "inputs": [
+    {
+      "type": "WorkflowImage",
+      "name": "image"
+    },
+    {
+      "type": "WorkflowParameter",
+      "name": "model_access_key",
+      "default_value": ""
+    },
+    {
+      "type": "WorkflowParameter",
+      "name": "callback_url",
+      "default_value": ""
+    },
+    {
+      "type": "WorkflowParameter",
+      "name": "callback_token",
+      "default_value": ""
+    },
+    {
+      "type": "WorkflowParameter",
+      "name": "disable_callback",
+      "default_value": true
+    }
+  ],
+  "dynamic_blocks_definitions": [
+    {
+      "type": "DynamicBlockDefinition",
+      "manifest": {
+        "type": "ManifestDescription",
+        "block_type": "AprilPublicCloudL2CSGaze",
+        "inputs": {
+          "image": {
+            "type": "DynamicInputDefinition",
+            "selector_types": [
+              "input_image"
+            ],
+            "is_dimensionality_reference": true
+          },
+          "model_access_key": {
+            "type": "DynamicInputDefinition",
+            "selector_types": [
+              "input_parameter"
+            ],
+            "value_types": [
+              "string"
+            ]
+          }
+        },
+        "outputs": {
+          "prediction": {
+            "type": "DynamicOutputDefinition",
+            "kind": []
+          }
+        }
+      },
+      "code": {
+        "type": "PythonCode",
+        "init_function_code": "def init():\n    from threading import RLock\n    return {\"lock\": RLock(), \"model\": None, \"device\": None}\n",
+        "init_function_name": "init",
+        "run_function_code": "def run(self, image, model_access_key):\n    import math\n    import time\n    import numpy as np\n\n    frame = image.numpy_image\n    if frame.shape[:2] != (480, 448):\n        raise ValueError(\"Expected a 448 x 480 tagged face stream\")\n    # Video timestamps belong to the cloud decoder's clock, not the browser's.\n    # Decode the browser's sequence from a high-contrast strip, verify its CRC,\n    # then remove the strip before gaze inference. It carries no personal data.\n    bits = [int(frame[8:24, index * 8 + 2:index * 8 + 6].mean() >= 128) for index in range(56)]\n    data = [sum(bits[offset + bit] << (7 - bit) for bit in range(8)) for offset in range(0, 56, 8)]\n    crc = 0\n    for byte in data[:6]:\n        crc ^= byte\n        for _ in range(8):\n            crc = ((crc << 1) ^ (7 if crc & 128 else 0)) & 255\n    magic = (data[0] << 8) | data[1]\n    sequence = int.from_bytes(bytes(data[2:6]), \"big\")\n    if magic not in (0xA53C, 0xA53D) or crc != data[6] or sequence == 0:\n        return {\"prediction\": {\"frame_sequence\": 0, \"gazes\": [], \"invalid_tag\": True}}\n    prediction = {\"frame_sequence\": sequence, \"gazes\": [], \"model_ms\": 0}\n    if magic == 0xA53D:\n        return {\"prediction\": prediction}\n    state = self._init_results\n    with state[\"lock\"]:\n        if state[\"model\"] is None:\n            import onnxruntime\n            from inference_models import AutoModel\n            if not model_access_key:\n                raise ValueError(\"The streaming server must supply model access credentials\")\n            gpu = \"CUDAExecutionProvider\" in onnxruntime.get_available_providers()\n            state[\"device\"] = \"cuda:0\" if gpu else \"cpu\"\n            providers = [\"CUDAExecutionProvider\", \"CPUExecutionProvider\"] if gpu else [\"CPUExecutionProvider\"]\n            state[\"model\"] = AutoModel.from_pretrained(\"l2cs-net/rn50\", api_key=model_access_key,\n                backend=\"onnx\", device=state[\"device\"], onnx_execution_providers=providers)\n        crop = np.ascontiguousarray(frame[32:480, :448])\n        started = time.perf_counter()\n        result = state[\"model\"]([crop], input_color_format=\"bgr\")\n        yaw = float(result.yaw.detach().cpu().numpy().reshape(-1)[0])\n        pitch = float(result.pitch.detach().cpu().numpy().reshape(-1)[0])\n        if not math.isfinite(yaw) or not math.isfinite(pitch):\n            raise ValueError(\"Non-finite gaze estimate\")\n        prediction.update(gazes=[{\"yaw\": yaw, \"pitch\": pitch}],\n            model_ms=round((time.perf_counter() - started) * 1000, 1), device=state[\"device\"])\n    return {\"prediction\": prediction}\n",
+        "run_function_name": "run"
+      }
+    },
+    {
+      "type": "DynamicBlockDefinition",
+      "manifest": {
+        "type": "ManifestDescription",
+        "block_type": "AprilPublicGazeCallback",
+        "inputs": {
+          "prediction": {
+            "type": "DynamicInputDefinition",
+            "selector_types": [
+              "step_output"
+            ],
+            "is_dimensionality_reference": true
+          },
+          "callback_url": {
+            "type": "DynamicInputDefinition",
+            "selector_types": [
+              "input_parameter"
+            ],
+            "value_types": [
+              "string"
+            ]
+          },
+          "callback_token": {
+            "type": "DynamicInputDefinition",
+            "selector_types": [
+              "input_parameter"
+            ],
+            "value_types": [
+              "string"
+            ]
+          },
+          "disable_callback": {
+            "type": "DynamicInputDefinition",
+            "selector_types": [
+              "input_parameter"
+            ],
+            "value_types": [
+              "boolean"
+            ]
+          }
+        },
+        "outputs": {
+          "queued": {
+            "type": "DynamicOutputDefinition",
+            "kind": []
+          }
+        }
+      },
+      "code": {
+        "type": "PythonCode",
+        "init_function_code": "def init():\n    from queue import Queue\n    from threading import Lock\n    return {\"pending\": Queue(maxsize=1), \"lock\": Lock(), \"workers\": []}\n",
+        "init_function_name": "init",
+        "run_function_code": "def run(self, prediction, callback_url, callback_token, disable_callback):\n    from queue import Empty, Full\n    from threading import Thread\n    from urllib.parse import urlparse\n    import requests\n\n    if disable_callback or not prediction.get(\"frame_sequence\"):\n        return {\"queued\": False}\n    if urlparse(callback_url).scheme != \"https\" or not callback_token:\n        raise ValueError(\"An authenticated HTTPS callback is required\")\n    state = self._init_results\n\n    def deliver():\n        # One persistent connection per worker avoids a TLS handshake per gaze.\n        # Two in-flight requests and one replaceable pending result bound work\n        # during network stalls. The receiver rejects reordered sequences.\n        with requests.Session() as http:\n            while True:\n                try:\n                    url, token, result = state[\"pending\"].get(timeout=30)\n                except Empty:\n                    return\n                try:\n                    http.post(url, json={\"prediction\": result}, headers={\"X-Pong-Webhook-Key\": token},\n                              timeout=(1, 1), allow_redirects=False)\n                except requests.RequestException:\n                    pass  # Never retry obsolete gaze; the next fresh frame replaces it.\n\n    with state[\"lock\"]:\n        workers = [worker for worker in state[\"workers\"] if worker.is_alive()]\n        while len(workers) < 2:\n            worker = Thread(target=deliver, daemon=True, name=\"gaze-callback\")\n            worker.start()\n            workers.append(worker)\n        state[\"workers\"] = workers\n        try:\n            state[\"pending\"].get_nowait()\n        except Empty:\n            pass\n        state[\"pending\"].put_nowait((callback_url, callback_token, prediction))\n    return {\"queued\": True}\n",
+        "run_function_name": "run"
+      }
+    }
+  ],
+  "steps": [
+    {
+      "type": "AprilPublicCloudL2CSGaze",
+      "name": "eye_gaze",
+      "image": "$inputs.image",
+      "model_access_key": "$inputs.model_access_key"
+    },
+    {
+      "type": "AprilPublicGazeCallback",
+      "name": "send_gaze",
+      "prediction": "$steps.eye_gaze.prediction",
+      "callback_url": "$inputs.callback_url",
+      "callback_token": "$inputs.callback_token",
+      "disable_callback": "$inputs.disable_callback"
+    }
+  ],
+  "outputs": [
+    {
+      "type": "JsonField",
+      "name": "prediction",
+      "selector": "$steps.eye_gaze.prediction"
+    }
+  ]
+}

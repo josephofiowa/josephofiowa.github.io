@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <meta name="pong-api-origin" content="">
+  <meta name="theme-color" content="#fdfefb">
+  <meta name="description" content="A game of focus. Play 3D Pong with your eyes.">
+  <title>Look / Pong — A game of focus</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23d4f58a'/%3E%3Cellipse cx='32' cy='32' rx='23' ry='14' fill='none' stroke='%2326382f' stroke-width='4'/%3E%3Ccircle cx='32' cy='32' r='7' fill='%2326382f'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+  <header id="site-header" class="site-header">
+    <a class="wordmark" href="/" aria-label="Look Pong home"><span class="eye-logo"><i></i></span>look <em>pong</em></a>
+    <span class="header-caption">A GAME OF FOCUS</span>
+    <button id="camera-stop" class="quiet-button hidden">Turn camera off <span class="tiny-light"></span></button>
+    <span id="chrome-pill" class="chrome-pill"><span class="chrome-icon">◉</span> Best in desktop Chrome</span>
+  </header>
+
+  <main>
+    <section id="welcome" class="screen welcome">
+      <div class="welcome-copy">
+        <div class="eyebrow"><span class="live-dot"></span> NO HANDS. ALL FOCUS.</div>
+        <h1>Eyes on.<br><span>Game on.</span></h1>
+        <button id="enable-camera" class="primary-button start-button">Get Started<svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M10 6 25 16 10 26Z"/></svg></button>
+        <p class="camera-disclosure"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="12" height="12" rx="3"/><path d="m15 10 6-3v10l-6-3"/></svg>We’ll use your webcam. Choose <strong>Allow</strong> if Chrome asks.<br>Already allowed? Your preview will open right away.</p>
+        <div class="welcome-steps"><span><b>01</b> Enable camera</span><span><b>02</b> Calibrate</span><span><b>03</b> Play</span></div>
+      </div>
+      <div class="hero-visual">
+        <div class="visual-heading"><span>THE CLASSIC. A NEW PERSPECTIVE.</span><span class="pill">3D / EYE CONTROL</span></div>
+        <canvas id="hero-court" aria-label="Preview of the three-dimensional Pong court"></canvas>
+        <div class="visual-bottom"><span><i class="mini-paddle"></i>Look to move. Keep the ball alive.</span><span>↖ ↗ ↙ ↘</span></div>
+      </div>
+      <div class="welcome-footer"><span>Made for a bright screen & a comfortable seat.</span><span id="privacy-copy">Camera frames stay on this computer. No video is saved.</span></div>
+    </section>
+
+    <section id="setup" class="screen setup hidden">
+      <div class="section-label">01 / CAMERA SETUP</div>
+      <h2 id="setup-title">Your <span id="permission-camera-anchor">camera</span> preview</h2>
+      <p id="setup-description" class="screen-description">Chrome works best. Your preview will appear after you allow camera access.</p>
+      <div id="camera-slot" class="camera-slot"></div>
+      <div id="setup-status" class="setup-status" role="status"><span class="spinner"></span>Waiting for camera access…</div>
+      <button id="retry-camera" class="quiet-button hidden">Try camera again</button>
+      <p class="setup-footnote">Follow nine dots, then play. Look at each dot while it fills.</p>
+    </section>
+
+    <section id="calibration" class="screen calibration hidden">
+      <button id="cancel-calibration" class="quiet-button calibration-cancel">Cancel calibration</button>
+      <button id="restart-calibration" class="quiet-button calibration-restart hidden">Restart calibration</button>
+      <div id="calibration-ready" class="calibration-ready hidden">
+        <div class="calibration-ready-intro"><div class="section-label">02 / CAMERA READY</div><h2>Look at the dot. It's ok to turn your head naturally</h2><p>Sit comfortably with your face in view. We’ll mark your starting position before you follow the dots.</p></div>
+        <div class="calibration-ready-actions">
+          <button id="start-calibration" class="primary-button calibration-start-button">Start Calibration<svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M10 6 25 16 10 26Z"/></svg></button>
+          <div class="calibration-ready-track" aria-hidden="true"><span id="calibration-ready-progress"></span></div>
+          <p id="calibration-ready-caption">Starts automatically in 5 seconds</p>
+        </div>
+      </div>
+      <div class="calibration-instructions">
+        <div id="calibration-label" class="section-label">02 / CALIBRATION</div>
+        <h2 id="calibration-heading">Follow the dot.</h2>
+        <p id="calibration-instruction">Look at the dot. It's ok to turn your head naturally</p>
+        <div id="calibration-dots" class="calibration-dots"></div>
+        <span id="calibration-count" class="small-label">DOT 1 OF 9</span>
+      </div>
+      <div id="target" class="target" aria-label="Look at this calibration target"><svg viewBox="0 0 80 80" aria-hidden="true"><circle class="target-track" cx="40" cy="40" r="32"/><circle id="target-progress" cx="40" cy="40" r="32"/></svg><span class="target-clock"><i></i></span></div>
+      <div id="calibration-hint" class="calibration-hint" role="status">Move your eyes to the target</div>
+    </section>
+
+    <section id="game-view" class="screen game-view hidden">
+      <div class="game-hud"><div><span class="small-label">RETURNS</span><strong id="rally-count">00</strong></div><div class="hud-divider"></div><div><span class="small-label">BALL SPEED</span><strong id="speed-count">1.0<span>×</span></strong></div><div class="hud-spacer"></div><button id="game-camera-stop" class="outline-button">Camera off</button><button id="pause-button" class="outline-button">Pause <span>Ⅱ</span></button></div>
+      <canvas id="game-court" aria-label="3D Pong game. Your eyes control the near paddle horizontally and vertically."></canvas>
+      <div class="game-bottom"><span><span class="live-dot"></span><span id="tracking-label">Eye control is live</span></span><span id="latency-label"></span><span>LOOK WHERE YOU WANT YOUR PADDLE</span></div>
+    </section>
+
+    <div id="webcam" class="webcam hidden"><div class="webcam-top"><span><span class="live-dot"></span>YOUR CAMERA</span><button id="toggle-preview" aria-label="Hide camera preview">−</button></div><div class="video-wrap"><video id="video" autoplay muted playsinline></video><canvas id="face-overlay"></canvas><div id="camera-loading" class="camera-loading"><span class="spinner"></span></div></div><div id="webcam-note" class="webcam-note">Sit comfortably with your whole face visible</div></div>
+
+    <div id="permission-guide" class="permission-guide hidden"><svg id="permission-arrow" aria-hidden="true"><path id="permission-arrow-path" vector-effect="non-scaling-stroke"/></svg><div class="permission-guide-copy"><strong>Click “Allow”</strong><p>in the camera permission that pops up.</p></div></div>
+
+    <div id="modal" class="modal-backdrop hidden"><div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title"><span id="modal-eyebrow" class="section-label">NICE FOCUS</span><h2 id="modal-title">One more rally?</h2><p id="modal-description"></p><div id="modal-stats" class="modal-stats hidden"></div><div id="countdown-number" class="countdown-number hidden">3</div><button id="modal-primary" class="primary-button">Replay<svg class="replay-icon" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M10 6 25 16 10 26Z"/></svg></button><button id="modal-secondary" class="quiet-button">Recalibrate</button></div></div>
+
+    <div id="toast" class="toast hidden" role="status"></div>
+    <p id="startup-status" class="startup-status" role="status" aria-live="polite"></p>
+  </main>
+  <script type="module" src="/assets/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,3 @@
+look-pong/assets/** linguist-generated=true
+look-pong/index.html linguist-generated=true
+look-pong/vendor/** linguist-vendored=true -whitespace

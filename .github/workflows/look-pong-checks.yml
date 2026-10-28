@@ -1,0 +1,32 @@
+name: Look Pong checks
+on:
+  pull_request:
+    paths: ['_services/look-pong/**', 'look-pong/**', 'render.yaml', '.github/workflows/look-pong-checks.yml']
+  push:
+    branches: [main, codex/deploy-look-pong]
+    paths: ['_services/look-pong/**', 'look-pong/**', 'render.yaml', '.github/workflows/look-pong-checks.yml']
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: _services/look-pong
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: _services/look-pong/package-lock.json
+      - run: pip install -r requirements-test.txt
+      - run: npm ci
+      - run: npm test
+      - run: pytest test_web_app.py test_cloud_streaming.py -q
+      - run: pytest production_checks.py -q
+      - run: python build_site.py
+      - run: git diff --exit-code -- ../../look-pong
