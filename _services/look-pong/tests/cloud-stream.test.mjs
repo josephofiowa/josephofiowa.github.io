@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { frameTag, FrameLedger, CloudGazeStream } from '../web/cloud-stream.js';
+import { frameTag, FrameLedger, CloudGazeStream, CAMERA_READY_TIMEOUT_MS } from '../web/cloud-stream.js';
 
 test('video tags carry the exact frame identity and face availability with a checksum', () => {
   const bits = frameTag(0x12345678, true);
@@ -48,6 +48,7 @@ test('the pending-frame ledger stays bounded when results never arrive', () => {
 });
 
 test('synthetic warmup results never enter calibration and camera attachment waits for fresh gaze', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
   const previous = globalThis.document;
   globalThis.document = { createElement: () => ({ getContext: () => ({}) }) };
   t.after(() => { globalThis.document = previous; });
@@ -77,6 +78,62 @@ test('synthetic warmup results never enter calibration and camera attachment wai
   assert.equal(ready, true); assert.equal(predictions, 3);
   assert.ok(stream.ledger.sequence > preparedSequence);
   assert.equal(stream.prewarming, false);
+  assert.equal(stream.cameraReady, true);
+  assert.equal(stream.cameraReadyTimer, null);
+  t.mock.timers.tick(CAMERA_READY_TIMEOUT_MS);
+  assert.equal(stream.stopped, false, 'usable camera gaze must cancel the startup deadline');
+  await stream.stop();
+});
+
+for (const [code, stats] of [
+  ['camera-frames', {}],
+  ['face-worker', { captures: 1 }],
+  ['face-crop', { captures: 40, frames: 40 }],
+  ['gaze-results', { captures: 40, frames: 40, faces: 40 }],
+  ['gaze-late', { captures: 40, frames: 40, faces: 40, results: 20, late: 20 }],
+  ['gaze-unsteady', { captures: 40, frames: 40, faces: 40, results: 20, late: 1 }],
+]) test(`warmup cannot hide a stalled webcam handoff: ${code}`, async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const previous = globalThis.document;
+  globalThis.document = { createElement: () => ({ getContext: () => ({}) }) };
+  t.after(() => { globalThis.document = previous; });
+  const warnings = t.mock.method(console, 'warn', () => {});
+  let failure, releases = 0, peerCloses = 0;
+  const stream = new CloudGazeStream();
+  stream.release = async () => { releases++; };
+  stream.pc = { close: () => peerCloses++ };
+  stream.running = true; stream.prewarming = true; stream.preparedAt = performance.now();
+  stream.warmupTimer = setTimeout(() => assert.fail('synthetic warmup timeout'), 120000);
+  stream.checkReady();
+  await stream.prepared;
+  const attached = stream.attachCamera({ video: {}, detector: { readFace() {} }, context: () => ({}),
+    onPrediction() {}, onStatus() {}, onError: error => { failure = error; } });
+  const rejected = assert.rejects(attached, new RegExp(code));
+  Object.assign(stream.cameraStats, stats);
+  stream.checkReady(); // A recent synthetic result must not clear the camera deadline.
+  t.mock.timers.tick(CAMERA_READY_TIMEOUT_MS - 1);
+  assert.equal(failure, undefined);
+  t.mock.timers.tick(1);
+  await rejected;
+  assert.match(failure.message, new RegExp(code));
+  assert.equal(stream.stopped, true);
+  assert.equal(releases, 1); assert.equal(peerCloses, 1);
+  assert.deepEqual(warnings.mock.calls[0].arguments[1], { code, ...stream.cameraStats });
+});
+
+test('a direct camera connection also gets a deadline, and cancellation removes it', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const previous = globalThis.document;
+  globalThis.document = { createElement: () => ({ getContext: () => ({}) }) };
+  t.after(() => { globalThis.document = previous; });
+  let failures = 0;
+  const stream = new CloudGazeStream({ onError: () => failures++ });
+  stream.api = async () => ({ state: 'running' });
+  await stream.pollStatus();
+  assert.ok(stream.cameraReadyTimer);
+  await stream.stop();
+  t.mock.timers.tick(CAMERA_READY_TIMEOUT_MS * 2);
+  assert.equal(failures, 0);
 });
 
 for (const stopDuringDetection of [false, true]) test(`a pending face detection cannot publish after ${stopDuringDetection ? 'session shutdown' : 'game over'}`, async t => {
@@ -112,7 +169,7 @@ test('stopping a stream closes every transport, cancels scheduled work, and requ
   stream.pc = { close: () => calls.push('peer-close') };
   stream.ws = { close: () => calls.push('socket-close') };
   stream.media = { getTracks: () => [{ stop: () => calls.push('video-stop') }] };
-  for (const timer of ['frameTimer', 'statusTimer', 'warmupTimer', 'disconnectTimer', 'heartbeat']) {
+  for (const timer of ['frameTimer', 'statusTimer', 'warmupTimer', 'cameraReadyTimer', 'disconnectTimer', 'heartbeat']) {
     stream[timer] = setTimeout(() => calls.push(`unexpected-${timer}`), 10);
   }
   const stopped = stream.stop(), stoppedAgain = stream.stop();
