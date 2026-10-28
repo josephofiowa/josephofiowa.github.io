@@ -484,7 +484,7 @@ function advanceReadyWithGaze(f, milliseconds) {
   }
 }
 
-test('cloud calibration waits for fresh streaming results before its full five-second countdown', async () => {
+test('cloud calibration waits for fresh streaming results before its full three-second countdown', async () => {
   const f = appFixture(); await f.click('enable-camera');
   f.run("transport = 'cloud-streaming'; cloudGazeReady = false;");
   advanceReadyWithGaze(f, 10000);
@@ -493,7 +493,7 @@ test('cloud calibration waits for fresh streaming results before its full five-s
   assert.equal(f.$('start-calibration').disabled, true);
   assert.equal(f.run('calibrationReadyStarted'), null);
   f.run('cloudGazeReady = true; restartCalibrationReadyTimer();');
-  advanceReadyWithGaze(f, 4999);
+  advanceReadyWithGaze(f, 2999);
   assert.equal(f.run('state'), 'calibration-ready');
   advanceReadyWithGaze(f, 1);
   assert.equal(f.run('state'), 'calibration');
@@ -508,16 +508,16 @@ test('cloud startup failure stays visible instead of being replaced by a waiting
   assert.equal(f.run('state'), 'calibration-ready');
 });
 
-test('Start Calibration visibly counts all five seconds after live tracking becomes ready', async () => {
+test('Start Calibration visibly counts all three seconds after live tracking becomes ready', async () => {
   const f = appFixture(); await f.click('enable-camera');
   f.run("transport = 'cloud-streaming'; cloudGazeReady = true; restartCalibrationReadyTimer();");
   const captions = [f.$('calibration-ready-caption').textContent];
-  for (let second = 1; second < 5; second++) {
+  for (let second = 1; second < 3; second++) {
     advanceReadyWithGaze(f, 1000);
     assert.equal(f.run('state'), 'calibration-ready');
     captions.push(f.$('calibration-ready-caption').textContent);
   }
-  assert.deepEqual(captions, [5, 4, 3, 2, 1].map(n => `Starts automatically in ${n} ${n === 1 ? 'second' : 'seconds'}`));
+  assert.deepEqual(captions, [3, 2, 1].map(n => `Starts automatically in ${n} ${n === 1 ? 'second' : 'seconds'}`));
   advanceReadyWithGaze(f, 999);
   assert.equal(f.run('state'), 'calibration-ready');
   advanceReadyWithGaze(f, 1);
@@ -556,7 +556,7 @@ test('an unanswered Allow prompt never opens the ready step, even after a long w
   assert.equal(f.$('calibration').classList.contains('hidden'), true);
   allow(); await request;
   assert.equal(f.run('state'), 'calibration-ready');
-  assert.equal(f.$('calibration-ready-caption').textContent, 'Starts automatically in 5 seconds');
+  assert.equal(f.$('calibration-ready-caption').textContent, 'Starts automatically in 3 seconds');
   assert.notEqual(f.run('calibrationReadyStarted'), null);
 });
 
@@ -602,7 +602,7 @@ test('granted permission still waits for playback and a presented live camera fr
   assert.equal(f.run('cameraAccessConfirmed'), false);
   f.presentFrame(); await request;
   assert.equal(f.run('state'), 'calibration-ready');
-  assert.equal(f.$('calibration-ready-caption').textContent, 'Starts automatically in 5 seconds');
+  assert.equal(f.$('calibration-ready-caption').textContent, 'Starts automatically in 3 seconds');
 });
 
 test('a late camera grant after cancellation stops the returned stream without starting calibration', async () => {
@@ -627,7 +627,7 @@ test('losing live camera output during the preview wait prevents calibration fro
   assert.equal(f.$('start-calibration').disabled, true);
 });
 
-test('camera allowance shows a live preview and Start Calibration, then automatically starts at five seconds', async () => {
+test('camera allowance shows a live preview and Start Calibration, then automatically starts at three seconds', async () => {
   const f = appFixture(); await f.click('enable-camera');
   assert.equal(f.run('state'), 'calibration-ready');
   assert.equal(f.$('webcam').classList.contains('hidden'), false);
@@ -637,10 +637,10 @@ test('camera allowance shows a live preview and Start Calibration, then automati
   assert.equal(f.$('calibration-ready-progress').style.transform, 'scaleX(1)');
   predict(f, .1, .2);
   assert.equal(f.run('targetSamples.length'), 0);
-  advanceReadyWithGaze(f, 2500);
+  advanceReadyWithGaze(f, 1500);
   assert.equal(f.run('state'), 'calibration-ready');
   assert.equal(f.$('calibration-ready-progress').style.transform, 'scaleX(0.5)');
-  advanceReadyWithGaze(f, 2499);
+  advanceReadyWithGaze(f, 1499);
   assert.equal(f.run('state'), 'calibration-ready');
   advanceCalibrationReady(f, 1);
   assert.equal(f.run('state'), 'calibration');
@@ -675,17 +675,17 @@ test('cancelling the preview timer cannot start calibration afterward', async ()
   assert.equal(f.run('targetToken'), '');
 });
 
-test('returning from a hidden tab gives the user a full five seconds with the preview', async () => {
+test('returning from a hidden tab gives the user a full three seconds with the preview', async () => {
   const f = appFixture(); await f.click('enable-camera');
   predict(f, .1, .2);
   advanceReadyWithGaze(f, 2000);
-  assert.equal(f.$('calibration-ready-caption').textContent, 'Starts automatically in 3 seconds');
+  assert.equal(f.$('calibration-ready-caption').textContent, 'Starts automatically in 1 second');
   f.setHidden(true); advanceCalibrationReady(f, 10000);
   assert.equal(f.run('state'), 'calibration-ready');
   f.setHidden(false);
   predict(f, .1, .2);
   assert.equal(f.$('calibration-ready-progress').style.transform, 'scaleX(1)');
-  advanceReadyWithGaze(f, 4999);
+  advanceReadyWithGaze(f, 2999);
   assert.equal(f.run('state'), 'calibration-ready');
   advanceCalibrationReady(f, 1);
   assert.equal(f.run('state'), 'calibration');
@@ -780,10 +780,10 @@ test('clicking Start Calibration freezes the last preview face position and size
   assert.equal(f.run('postureBad'), true);
 });
 
-test('automatic calibration anchors the newest reading arriving at the five-second boundary', async () => {
+test('automatic calibration anchors the newest reading arriving at the three-second boundary', async () => {
   const f = appFixture(); await f.click('enable-camera');
   predict(f, .1, .2);
-  advanceReadyWithGaze(f, 4900);
+  advanceReadyWithGaze(f, 2900);
   assert.equal(guideEllipse(f), undefined);
   f.advance(100);
   predict(f, .1, .2, undefined, { x: 450, y: 260, width: 240, height: 260 });
@@ -1281,13 +1281,13 @@ test('muting the camera immediately clears partial dwell and rejects a returning
 for (const start of ['click', 'timer']) test(`a live preview starts calibration by ${start} while gaze is still loading`, async () => {
   const f = appFixture(); await f.click('enable-camera');
   assert.equal(f.$('start-calibration').disabled, false);
-  assert.equal(f.$('calibration-ready-caption').textContent, 'Starts automatically in 5 seconds');
+  assert.equal(f.$('calibration-ready-caption').textContent, 'Starts automatically in 3 seconds');
   advanceCalibrationReady(f, 2000);
   f.run('onPrediction({captured_at:performance.now(),gazes:[]},targetToken)');
   assert.equal(f.$('start-calibration').disabled, false);
-  assert.equal(f.$('calibration-ready-caption').textContent, 'Starts automatically in 3 seconds');
+  assert.equal(f.$('calibration-ready-caption').textContent, 'Starts automatically in 1 second');
   if (start === 'click') f.click('start-calibration');
-  else advanceCalibrationReady(f, 3000);
+  else advanceCalibrationReady(f, 1000);
   assert.equal(f.run('state'), 'calibration');
   assert.equal(f.$('calibration-count').textContent, 'DOT 1 OF 9');
   f.advance(2000); f.run('updateCalibration(performance.now())');
