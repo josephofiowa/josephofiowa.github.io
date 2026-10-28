@@ -62,6 +62,12 @@ function scheduleStartButtonPulse() {
 
 scheduleStartButtonPulse();
 
+let startupError = '';
+function renderStartupError() {
+  const status = $('startup-status');
+  if (status) status.textContent = state === 'welcome' ? '' : startupError;
+}
+
 const startupNotice = setTimeout(() => {
   if ($('startup-status')) $('startup-status').textContent = 'Preparing eye tracking. The first visit may take about a minute.';
 }, 1500);
@@ -80,7 +86,8 @@ const appConfig = loadConfig().then(config => {
   return config;
 }).catch(error => {
   clearTimeout(startupNotice); transport = 'cloud-streaming';
-  if ($('startup-status')) $('startup-status').textContent = error.message;
+  startupError = error.message;
+  renderStartupError();
   return { error: error.message };
 });
 
@@ -116,6 +123,7 @@ async function takePreparedTracking(config) {
 function setScreen(id) {
   if (id === 'welcome') scheduleStartButtonPulse();
   else stopStartButtonPulse();
+  if (startupError) renderStartupError();
   screens.forEach(name => $(name).classList.toggle('hidden', name !== id));
   $('site-header').classList.toggle('hidden', id === 'game-view');
   $('camera-stop').classList.toggle('hidden', !stream && id === 'welcome');
