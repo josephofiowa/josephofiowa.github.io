@@ -37,9 +37,10 @@ export class FrameLedger {
 }
 
 export class CloudGazeStream {
-  constructor({ video = null, detector = null, context = null, onPrediction = () => {}, onStatus = () => {}, onError = () => {} } = {}) {
+  constructor({ video = null, detector = null, context = null, onPrediction = () => {}, onStatus = () => {}, onError = () => {}, onFace = () => {} } = {}) {
     this.video = video; this.detector = detector; this.context = context;
     this.onPrediction = onPrediction; this.onStatus = onStatus; this.onError = onError;
+    this.onFace = onFace;
     this.abort = new AbortController(); this.ledger = new FrameLedger();
     this.canvas = document.createElement('canvas'); this.canvas.width = STREAM_WIDTH; this.canvas.height = STREAM_HEIGHT;
     this.paint = this.canvas.getContext('2d', { alpha: false });
@@ -117,10 +118,10 @@ export class CloudGazeStream {
     }
   }
 
-  async attachCamera({ video, detector, context, onPrediction, onStatus, onError }) {
+  async attachCamera({ video, detector, context, onPrediction, onStatus, onError, onFace = () => {} }) {
     if (this.stopped) throw new Error('Eye tracking stopped. Restart the camera.');
     if (typeof detector?.readFace !== 'function') throw new Error('Eye tracking could not load. Reload and try again.');
-    Object.assign(this, { video, detector, context, onPrediction, onStatus, onError });
+    Object.assign(this, { video, detector, context, onPrediction, onStatus, onError, onFace });
     this.prewarming = false; this.streak = 0; this.lastResult = 0;
     this.cameraStats = { captures: 0, frames: 0, faces: 0, results: 0, late: 0 };
     this.beginCameraReadiness();
@@ -198,6 +199,7 @@ export class CloudGazeStream {
             if (this.stopped) break;
             // Game over or pause can happen while face detection is pending.
             if (!this.context().fresh) continue;
+            this.onFace(face);
             this.cameraStats.frames++;
             if (face) this.cameraStats.faces++;
             if (!this.cameraReady) this.onStatus(face

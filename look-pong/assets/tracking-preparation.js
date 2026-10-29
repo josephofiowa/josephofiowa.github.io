@@ -15,8 +15,9 @@ export class TrackingPreparation {
       this.faceReady = true;
       this.onStatus(this.streamStatus || 'Connecting eye tracking…');
       return face;
-    }).catch(async () => {
-      this.faceError = new Error('Face detection could not initialize in this browser. Please retry in desktop Chrome. (face-model)');
+    }).catch(async error => {
+      this.faceError = error?.code === 'face-download' ? error
+        : new Error('Face detection could not initialize in this browser. Please retry in desktop Chrome. (face-model)');
       this.resolveFailure(this.faceError);
       await this.stopFace(); return null;
     });

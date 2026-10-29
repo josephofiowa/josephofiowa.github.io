@@ -2,7 +2,37 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import { selectFaceCrop, createFaceTracker } from '../web/face-detector.js';
+import { selectFaceCrop, createFaceTracker, loadFaceModelMetadata } from '../web/face-detector.js';
+
+for (const failure of ['timeout', 'network', 502, 429]) test(`face metadata recovers after a transient ${failure} without requiring a camera restart`, async () => {
+  let calls = 0;
+  const waits = [], signals = [];
+  const metadata = { tfjs: { model: 'browser-face-model' } };
+  const result = await loadFaceModelMetadata('https://example.com/model', {
+    request: async (url, { signal }) => {
+      signals.push(signal);
+      if (++calls === 1) {
+        if (failure === 'timeout') throw new DOMException('Timed out', 'TimeoutError');
+        if (failure === 'network') throw new TypeError('Failed to fetch');
+        return { ok: false, status: failure };
+      }
+      return { ok: true, json: async () => metadata };
+    },
+    wait: async ms => waits.push(ms),
+  });
+  assert.equal(result, metadata);
+  assert.equal(calls, 2);
+  assert.deepEqual(waits, [1000]);
+  assert.notEqual(signals[0], signals[1], 'each attempt has a fresh timeout signal');
+});
+
+for (const status of [403, 502]) test(`face metadata failure ${status} is bounded and identifies the download stage`, async () => {
+  let calls = 0;
+  await assert.rejects(loadFaceModelMetadata('https://example.com/model?secret=do-not-display', {
+    request: async () => { calls++; return { ok: false, status }; }, wait: async () => {},
+  }), error => error.code === 'face-download' && !error.message.includes('secret'));
+  assert.equal(calls, status === 403 ? 1 : 2);
+});
 
 test('browser face cropping excludes other classes, low confidence and malformed detections', () => {
   const face = { class: 'face', confidence: .9, bbox: { x: 370, y: 170, width: 180, height: 200 } };
