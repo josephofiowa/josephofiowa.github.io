@@ -48,6 +48,7 @@ let calibrationReadyStarted = null;
 let targetToken = '', countdownEnd = 0, lastTick = performance.now(), toastTimer;
 let startButtonPulseTimer = null;
 let primaryAction = null, secondaryAction = null, modalKind = '', previousFocus = null;
+let completedGames = 0;
 const initialTargets = [[.5, .22], [.12, .14], [.5, .14], [.88, .14], [.88, .5], [.88, .86], [.5, .86], [.12, .86], [.12, .5]];
 const additionalTargets = [[.3, .36], [.5, .36], [.7, .36], [.7, .52], [.7, .68], [.5, .68], [.3, .68], [.3, .52], [.5, .52]];
 let extendedCalibration = false;
@@ -245,7 +246,7 @@ function showModal({ kind, label, title, description, primary, secondary, action
   $('modal-primary').disabled = false;
   $('modal-secondary').classList.toggle('hidden', !secondary);
   $('modal-primary').textContent = primary || '';
-  if (kind === 'gameover') $('modal-primary').innerHTML = 'Replay<svg class="replay-icon" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M10 6 25 16 10 26Z"/></svg>';
+  if (kind === 'gameover' && primary === 'Replay') $('modal-primary').innerHTML = 'Replay<svg class="replay-icon" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M10 6 25 16 10 26Z"/></svg>';
   $('modal-secondary').textContent = secondary || '';
   $('modal-stats').classList.toggle('hidden', !stats);
   $('modal-stats').replaceChildren();
@@ -1083,14 +1084,20 @@ function startRound() {
 
 function endGame(result) {
   if (state !== 'playing') return;
+  const suggestRecalibration = completedGames === 0 && result.playerReturns === 0;
+  completedGames++;
   state = 'gameover'; game.running = false;
   cancelIdleTrackingStop();
   idleTrackingDeadline = performance.now() + GAME_OVER_IDLE_MS;
   idleTrackingTimer = setTimeout(stopIdleTracking, GAME_OVER_IDLE_MS);
   showModal({ kind: 'gameover', label: 'THAT’S A WRAP', title: 'One more rally?',
-    description: result.playerReturns ? 'A good rally starts with a little focus.' : 'Look toward the ball’s arrival point to meet it with your paddle.',
+    description: suggestRecalibration ? 'Try recalibrating to help your paddle follow your gaze.'
+      : result.playerReturns ? 'A good rally starts with a little focus.' : 'Look toward the ball’s arrival point to meet it with your paddle.',
     stats: [[String(result.playerReturns).padStart(2, '0'), 'RETURNS'], [`${result.multiplier.toFixed(1)}×`, 'TOP SPEED']],
-    primary: 'Replay', secondary: 'Recalibrate', action: replayRound, secondaryAction: recalibrate });
+    primary: suggestRecalibration ? 'Recalibrate' : 'Replay',
+    secondary: suggestRecalibration ? 'Play Again' : 'Recalibrate',
+    action: suggestRecalibration ? recalibrate : replayRound,
+    secondaryAction: suggestRecalibration ? replayRound : recalibrate });
 }
 
 function pauseGame(kind, message) {

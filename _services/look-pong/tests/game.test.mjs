@@ -1255,6 +1255,42 @@ test('game-over offers Replay and a smaller Recalibrate; Replay keeps calibratio
   assert.notEqual(f.run('calibration'), null);
 });
 
+test('zero returns on the first game promotes Recalibrate and starts the full recalibration', async () => {
+  const f = appFixture(); await allowCameraAndCalibrate(f);
+  f.run(`calibration={}; calibrationId='first-profile'; state='playing'; endGame({playerReturns:0,hits:1,multiplier:1.2});`);
+  assert.equal(f.$('modal-primary').textContent, 'Recalibrate');
+  assert.equal(f.$('modal-secondary').textContent, 'Play Again');
+  assert.equal(f.run('document.activeElement.id'), 'modal-primary');
+  f.click('modal-primary');
+  assert.equal(f.run('state'), 'calibration-ready');
+  assert.equal(f.run('targets.length'), 18);
+  assert.equal(f.run('calibrationId'), null);
+  f.run(`calibration={}; state='playing'; endGame({playerReturns:0,multiplier:1.2});`);
+  assert.equal(f.$('modal-primary').textContent, 'Replay', 'recalibration does not make the next game a first game');
+  assert.equal(f.$('modal-secondary').textContent, 'Recalibrate');
+});
+
+test('the smaller Play Again keeps calibration and a later zero-return game keeps the normal order', async () => {
+  const f = appFixture(); await allowCameraAndCalibrate(f);
+  f.run(`calibration={}; calibrationId='first-profile'; state='playing'; endGame({playerReturns:0,multiplier:1.2});`);
+  f.click('modal-secondary');
+  assert.equal(f.run('state'), 'playing');
+  assert.equal(f.run('calibrationId'), 'first-profile');
+  f.run('endGame({playerReturns:0,multiplier:1.2});');
+  assert.equal(f.$('modal-primary').textContent, 'Replay');
+  assert.equal(f.$('modal-secondary').textContent, 'Recalibrate');
+});
+
+test('one return on the first game keeps Replay primary, including after a later zero-return game', () => {
+  const f = appFixture();
+  f.run(`state='playing'; endGame({playerReturns:1,multiplier:1.2});`);
+  assert.equal(f.$('modal-primary').textContent, 'Replay');
+  assert.equal(f.$('modal-secondary').textContent, 'Recalibrate');
+  f.run(`state='playing'; endGame({playerReturns:0,multiplier:1.2});`);
+  assert.equal(f.$('modal-primary').textContent, 'Replay');
+  assert.equal(f.$('modal-secondary').textContent, 'Recalibrate');
+});
+
 test('Recalibrate forgets the personal mapping and restarts at the first target', async () => {
   const f = appFixture();
   await allowCameraAndCalibrate(f);
