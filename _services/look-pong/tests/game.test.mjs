@@ -465,6 +465,56 @@ test('loading progress stays off the homepage and identifies the stage after Get
   f.run('stopCamera();');
 });
 
+test('a face missing from the live preview gets a hint at five seconds without waiting for cloud gaze', async () => {
+  const f = appFixture({ config: { processing: 'cloud', transport: 'cloud-streaming' } });
+  let visible = false, reads = 0;
+  f.context.previewDetector = { readFace: async () => { reads++; return visible ? { x: 320, y: 240, width: 100, height: 100 } : null; } };
+  f.run(`createCloudGazeStream = () => new Promise(() => {});
+    trackingPreparation = Promise.resolve({ faceReady: true, face: previewDetector, dispose: async () => {} });`);
+  f.advance(5000); f.run('renderFaceViewHint();');
+  assert.equal(f.$('face-view-hint').classList.contains('hidden'), true, 'no hint before camera permission');
+  await f.click('enable-camera'); await flushAsync();
+  await f.run('checkPreviewFace(performance.now());');
+  assert.equal(reads, 1);
+  assert.equal(f.run('cloudGazeReady'), false);
+  f.advance(4999); f.run('renderFaceViewHint();');
+  assert.equal(f.$('face-view-hint').classList.contains('hidden'), true);
+  f.advance(1); f.run('renderFaceViewHint();');
+  assert.equal(f.$('face-view-hint').classList.contains('hidden'), false);
+  assert.equal(f.$('webcam-note').classList.contains('hidden'), true, 'only one preview caption is visible');
+  visible = true;
+  await f.run('checkPreviewFace(performance.now());');
+  assert.equal(f.$('face-view-hint').classList.contains('hidden'), true);
+  assert.equal(f.$('webcam-note').classList.contains('hidden'), false);
+  assert.equal(f.run('cloudGazeReady'), false, 'a face alone does not start calibration');
+  visible = false; f.advance(250); await f.run('checkPreviewFace(performance.now());');
+  f.advance(4999); f.run('renderFaceViewHint();');
+  assert.equal(f.$('face-view-hint').classList.contains('hidden'), true, 'a newly missing face gets another full five seconds');
+  f.advance(1); f.run('renderFaceViewHint();');
+  assert.equal(f.$('face-view-hint').classList.contains('hidden'), false);
+  f.run("showTrackingError(Error('Connection failed'));");
+  assert.equal(f.$('face-view-hint').classList.contains('hidden'), true, 'connection errors retain priority');
+  assert.equal(f.$('webcam-note').classList.contains('hidden'), false);
+  f.run('stopCamera();');
+});
+
+test('loading face detection and a stopped camera cannot produce the missing-face hint', async () => {
+  const f = appFixture({ config: { processing: 'cloud', transport: 'cloud-streaming' } });
+  f.run('createCloudGazeStream = () => new Promise(() => {});');
+  await f.click('enable-camera'); await flushAsync();
+  f.advance(5000); await f.run('checkPreviewFace(performance.now());'); f.run('renderFaceViewHint();');
+  assert.equal(f.$('face-view-hint').classList.contains('hidden'), true, 'unknown face presence is not a missing face');
+  let finishDetection;
+  f.context.previewDetector = { readFace: () => new Promise(resolve => { finishDetection = resolve; }) };
+  f.run('trackingPreparation = Promise.resolve({ faceReady: true, face: previewDetector, dispose: async () => {} });');
+  f.advance(250);
+  const pending = f.run('checkPreviewFace(performance.now());'); await flushAsync();
+  f.run('stopCamera();'); finishDetection(null); await pending;
+  f.advance(10000); f.run('renderFaceViewHint();');
+  assert.equal(f.$('face-view-hint').classList.contains('hidden'), true);
+  assert.equal(f.run('faceInView'), null, 'late detections cannot change a stopped camera');
+});
+
 test('retry recovers from startup failure and enables calibration after fresh gaze arrives', async () => {
   const f = appFixture({ config: { processing: 'cloud', transport: 'cloud-streaming', face_detector: { model_id: 'test-face' } },
     getUserMedia: media => { media.active = true; media.getVideoTracks()[0].readyState = 'live'; return media; } });

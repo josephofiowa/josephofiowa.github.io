@@ -19,6 +19,7 @@ const webcam = $('webcam');
 const capture = document.createElement('canvas');
 capture.width = 640; capture.height = 480;
 const captureContext = capture.getContext('2d', { alpha: false });
+const previewCapture = document.createElement('canvas');
 const court = new CourtRenderer($('game-court'), { fillViewport: true });
 const hero = new CourtRenderer($('hero-court'));
 const demo = new PongGame();
@@ -28,6 +29,7 @@ let videoFrameCallback = null, videoFrameAt = -Infinity, videoFrameTime = -1;
 let videoFrameSequence = 0, capturedFrameSequence = 0;
 let calibration = null, calibrationId = null, baseline = null, lastFace = null, lastGood = 0;
 let latestFaceGuide = null, lastFaceGuideCapture = null;
+let faceInView = null, faceMissingSince = null, previewFaceCheckAt = -Infinity, previewFaceCheckPending = false;
 let inferenceActive = false, activeRequest = null, stopped = false, processing = 'local';
 let browserFaceDetector = null, detectorEpoch = -1, detectorFailed = false;
 let transport = apiUrl('/api/config').startsWith('https://') ? 'cloud-streaming' : 'http';
@@ -55,6 +57,7 @@ const CALIBRATION_PREVIEW_MS = 3000;
 const CALIBRATION_GUIDANCE = "Look at the dot. It's ok to turn your head naturally";
 const CAMERA_FRAME_GAP_MS = 350;
 const FACE_MODEL_LOAD_MS = 60000;
+const FACE_VIEW_HINT_MS = 5000;
 const GAZE_INTERVAL_MS = 125;
 const GAME_OVER_IDLE_MS = 5000;
 const game = new PongGame(endGame);
@@ -104,7 +107,51 @@ function setTrackingStatus(message) {
 function showTrackingError(error) {
   cloudGazeReady = false; cameraReady = false; cloudConnectionError = error.message;
   loseTracking(error.message);
+  renderFaceViewHint();
   if (state === 'calibration-ready') updateCalibrationReady(performance.now());
+}
+
+function renderFaceViewHint(now = performance.now()) {
+  const show = cameraAccessConfirmed && hasFreshCameraFrame() && !document.hidden && !cloudConnectionError
+    && ['calibration-ready', 'calibration'].includes(state) && faceInView === false
+    && faceMissingSince !== null && now - faceMissingSince >= FACE_VIEW_HINT_MS;
+  $('face-view-hint').classList.toggle('hidden', !show);
+  $('webcam-note').classList.toggle('hidden', show);
+}
+
+function noteFacePresence(present) {
+  if (!cameraAccessConfirmed || !cameraInferenceActive()) return;
+  faceInView = present;
+  if (present) faceMissingSince = null;
+  else faceMissingSince ??= performance.now();
+  renderFaceViewHint();
+}
+
+function resetFaceViewHint(cameraStarted = false) {
+  faceInView = null; faceMissingSince = cameraStarted ? performance.now() : null;
+  previewFaceCheckAt = -Infinity; previewFaceCheckPending = false;
+  renderFaceViewHint();
+}
+
+async function checkPreviewFace(now) {
+  if (mobileDevice || state !== 'calibration-ready' || cloudGazeStream || previewFaceCheckPending
+      || cloudConnectionError || !hasFreshCameraFrame() || document.hidden || now - previewFaceCheckAt < 250) return;
+  previewFaceCheckAt = now; previewFaceCheckPending = true;
+  const epoch = cameraEpoch;
+  try {
+    // Reuse the browser detector while cloud warmup is pending. Camera pixels
+    // stay local here; the preparation retains ownership of the detector.
+    const prepared = await trackingPreparation;
+    const detector = browserFaceDetector || (prepared?.faceReady && !prepared.disposed ? prepared.face : null);
+    if (epoch !== cameraEpoch || state !== 'calibration-ready' || cloudGazeStream || !hasFreshCameraFrame()
+        || !cameraInferenceActive() || typeof detector?.readFace !== 'function') return;
+    previewCapture.width = 640;
+    previewCapture.height = Math.round(640 * video.videoHeight / video.videoWidth);
+    previewCapture.getContext('2d').drawImage(video, 0, 0, previewCapture.width, previewCapture.height);
+    const face = await detector.readFace(previewCapture, videoFrameAt);
+    if (epoch === cameraEpoch && state === 'calibration-ready' && !cloudGazeStream && hasFreshCameraFrame()) noteFacePresence(Boolean(face));
+  } catch { /* The tracking startup path reports detector failures. */ }
+  finally { if (epoch === cameraEpoch) previewFaceCheckPending = false; }
 }
 
 async function retryTracking() {
@@ -179,6 +226,7 @@ function setScreen(id) {
     webcam.classList.remove('hidden', 'floating', 'collapsed'); webcam.classList.add('in-setup');
     $('toggle-preview').textContent = '−';
   } else webcam.classList.add('hidden');
+  renderFaceViewHint();
 }
 
 function toast(message) {
@@ -308,6 +356,7 @@ async function enableCamera() {
     if (epoch !== cameraEpoch || !hasLiveCameraFeed()) return;
     startFrameMonitor();
     cameraAccessConfirmed = true;
+    resetFaceViewHint(true);
     video.parentElement.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
     $('permission-guide').classList.add('hidden');
     $('setup').classList.remove('awaiting-permission');
@@ -454,6 +503,7 @@ function stopCamera() {
   extendedCalibration = false;
   cameraAccessConfirmed = false; cameraPermissionStatus = null;
   cameraStartup?.abort(); cameraStartup = null;
+  resetFaceViewHint();
   const preparationClosed = cancelTrackingPreparation();
   trackingShutdown = Promise.all([trackingShutdown, preparationClosed]).then(() => {});
   cloudConnectionError = ''; trackingStartupStatus = 'Preparing eye tracking…';
@@ -618,6 +668,7 @@ async function startInference() {
           context: () => ({ fresh: current() && cameraInferenceActive() && hasFreshCameraFrame(), captured_at: videoFrameAt,
             epoch: cameraEpoch, run: calibrationRun, token: targetToken, profile_id: calibrationId }),
           onStatus: message => { if (current() && cameraInferenceActive()) setTrackingStatus(message); },
+          onFace: face => { if (current() && hasFreshCameraFrame()) noteFacePresence(Boolean(face)); },
           onError: showCloudError,
           onPrediction: (data, frame, timing) => {
             if (!current() || !cameraInferenceActive() || frame.run !== calibrationRun || frame.profile_id !== calibrationId) return;
@@ -686,6 +737,7 @@ async function startInference() {
         } finally { signal.removeEventListener('abort', abort); }
       } else frame = { image: capture.toDataURL('image/jpeg', 0.8).split(',')[1] };
       if (!current() || !cameraInferenceActive() || run !== calibrationRun || profileId !== calibrationId || !stream) continue;
+      if (browserFaceDetector) noteFacePresence(Boolean(frame?.face_crop));
       if (!frame) { onPrediction({ captured_at: capturedAt, gazes: [] }, token); continue; }
       const requestStarted = performance.now();
       const response = await apiFetch('/api/gaze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...frame, captured_at: capturedAt, calibration_id: profileId }), signal: activeRequest.signal });
@@ -720,6 +772,8 @@ function onPrediction(data, token) {
   if (state === 'calibration' && (token !== targetToken || targetAdvanceAt !== null)) return;
   if (!hasFreshCameraFrame()) { loseTracking('Camera paused. Waiting for a live view of your eyes.'); return; }
   const result = selectPlayerGaze(data.gazes);
+  // Valid gaze also confirms a visible face when a local fallback omits its box.
+  if (transport !== 'cloud-streaming' && !browserFaceDetector) noteFacePresence(Boolean(result));
   const face = faceGeometry(data, result);
   const calibrating = ['calibration-ready', 'calibration', 'saving-calibration'].includes(state);
   let reason = '';
@@ -1066,6 +1120,8 @@ function resumeGame() {
 
 function tick(now) {
   const dt = Math.min((now - lastTick) / 1000, .04); lastTick = now;
+  checkPreviewFace(now);
+  renderFaceViewHint(now);
   if (state === 'welcome') {
     const t = now / 1000;
     demo.ball = { x: Math.sin(t * .65) * .54, y: Math.cos(t * .9) * .25, z: 2.6 + Math.sin(t * .8) * 1.8 };

@@ -74,6 +74,15 @@ test('connection failure stops a face model that finishes loading after the erro
   assert.equal(stops, 1);
 });
 
+test('download failure retains its specific diagnosis and releases the cloud connection', async () => {
+  const download = Object.assign(new Error('Face detection could not download. (face-download)'), { code: 'face-download' });
+  let stopped = false;
+  const prepared = new TrackingPreparation({ loadFace: async () => { throw download; },
+    createStream: async () => ({ start: async () => {}, stop: async () => { stopped = true; } }) });
+  assert.equal((await prepared.take()).error, download);
+  assert.equal(stopped, true);
+});
+
 test('startup reports the face-model stage before forwarding the connection stage', async () => {
   const warmup = deferred(), statuses = [];
   const stream = { async start() { this.onStatus('Starting the eye-tracking model…'); }, stop: async () => {} };

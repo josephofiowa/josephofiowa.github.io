@@ -53,6 +53,28 @@ export function createFaceTracker(locate, { now = () => performance.now(), refre
   };
 }
 
+export async function loadFaceModelMetadata(url, {
+  request = fetch, wait = ms => new Promise(resolve => setTimeout(resolve, ms)),
+} = {}) {
+  // Retry only the read-only metadata download, before creating a worker.
+  // A transient timeout must not permanently fail an otherwise healthy camera.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let retryable = true;
+    try {
+      const response = await request(url, { signal: AbortSignal.timeout(15000) });
+      if (response.ok) return await response.json();
+      retryable = response.status === 408 || response.status === 429 || response.status >= 500;
+    } catch (error) {
+      retryable = ['TimeoutError', 'TypeError'].includes(error.name);
+    }
+    if (!retryable || attempt === 1) break;
+    await wait(1000);
+  }
+  const error = new Error('Face detection could not download. Check your connection and retry eye tracking. (face-download)');
+  error.code = 'face-download';
+  throw error;
+}
+
 export async function loadBrowserFaceDetector(config) {
   if (!config?.model_id || !config.publishable_key?.startsWith('rf_')) return null;
   // An unfinished training has no browser artifact. Check before creating a
@@ -61,8 +83,7 @@ export async function loadBrowserFaceDetector(config) {
   const metadataUrl = `${apiBase}/tfjs/model/${config.model_id}?${new URLSearchParams({
     publishable_key: config.publishable_key, host: location.host,
   })}`;
-  const response = await fetch(metadataUrl, { signal: AbortSignal.timeout(15000) });
-  if (!response.ok || !(await response.json()).tfjs) return null;
+  if (!(await loadFaceModelMetadata(metadataUrl)).tfjs) return null;
   const { InferenceEngine } = await import(new URL('../vendor/inference.es.js', import.meta.url).href);
   const engine = new InferenceEngine(apiBase);
   const worker = await engine.startWorkerByModelId(config.model_id, config.publishable_key, [{ scoreThreshold: .5, maxNumBoxes: 10 }]);

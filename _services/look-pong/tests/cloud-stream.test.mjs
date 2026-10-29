@@ -155,6 +155,22 @@ for (const stopDuringDetection of [false, true]) test(`a pending face detection 
   await stream.stop(); await loop;
 });
 
+test('face presence reaches the preview before any cloud prediction arrives', async t => {
+  const previous = globalThis.document;
+  globalThis.document = { createElement: () => ({ getContext: () => ({ drawImage() {}, fillRect() {} }) }) };
+  t.after(() => { globalThis.document = previous; });
+  let presence, predictions = 0;
+  const stream = new CloudGazeStream({ video: { currentTime: 1, videoWidth: 640, videoHeight: 480 },
+    context: () => ({ fresh: true, captured_at: performance.now() }), detector: { readFace: async () => null },
+    onFace: face => { presence = face; }, onPrediction: () => predictions++ });
+  stream.track = { requestFrame() {} };
+  const loop = stream.publishFrames();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(presence, null);
+  assert.equal(predictions, 0);
+  await stream.stop(); await loop;
+});
+
 test('stopping a stream closes every transport, cancels scheduled work, and requests remote teardown once', async t => {
   const previousDocument = globalThis.document, previousFetch = globalThis.fetch;
   globalThis.document = { querySelector: () => null, createElement: () => ({ getContext: () => ({}) }) };
