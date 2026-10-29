@@ -95,10 +95,11 @@ export class CloudGazeStream {
       }
       this.publishFrames();
       await this.pc.setLocalDescription(await this.pc.createOffer());
-      // STUN discovery can stall on one of Chrome's network interfaces even
-      // after it has usable candidates. Signal those candidates and let ICE
-      // try the server's UDP/TCP routes instead of failing before connecting.
+      // A slow STUN probe must not prevent the WHIP offer/answer exchange.
+      // Send after a short best-effort discovery window, even if no local
+      // candidates are listed yet, then try the server's UDP/TCP routes.
       const gathering = await waitForIceGathering(this.pc, { signal: this.abort.signal });
+      this.abort.signal.throwIfAborted();
       if (!gathering.complete) console.info('[Look Pong connection]', { code: 'ice-discovery-pending', ...gathering });
       const answer = await this.api(`sessions/${this.id}/offer`, { sdp: this.pc.localDescription.sdp });
       await this.pc.setRemoteDescription(answer);

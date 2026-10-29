@@ -36,7 +36,7 @@ test('blocked STUN does not prevent trying the host candidates already gathered'
   const peer = new FakePeer(), signal = new FakeSignal();
   let done = false;
   const waiting = waitForIceGathering(peer, { signal }).then(result => { done = true; return result; });
-  t.mock.timers.tick(2499);
+  t.mock.timers.tick(999);
   await Promise.resolve();
   assert.equal(done, false);
   t.mock.timers.tick(1);
@@ -73,21 +73,18 @@ test('ICE gathering resolves on completion and removes all listeners', async t =
 });
 
 for (const mode of ['deadline', 'already complete', 'later complete']) {
-  test(`ICE gathering fails without candidates: ${mode}`, async t => {
+  test(`ICE gathering permits WHIP negotiation without listed candidates: ${mode}`, async t => {
     t.mock.timers.enable({ apis: ['setTimeout'] });
     const peer = new FakePeer(), signal = new FakeSignal();
     peer.localDescription = { sdp: 'v=0\r\na=ice-pwd:not-for-diagnostics\r\na=candidate:incomplete\r\n' };
     if (mode === 'already complete') peer.iceGatheringState = 'complete';
     const waiting = waitForIceGathering(peer, { signal });
-    const rejected = assert.rejects(waiting, error => {
-      assert.equal(error.code, 'ice-gathering');
-      assert.equal(error.diagnostics.candidates.total, 0);
-      assert.doesNotMatch(JSON.stringify(error), /not-for-diagnostics/);
-      return true;
-    });
-    if (mode === 'deadline') t.mock.timers.tick(2500);
+    if (mode === 'deadline') t.mock.timers.tick(1000);
     if (mode === 'later complete') peer.change({ iceGatheringState: 'complete' }, 'icegatheringstatechange');
-    await rejected;
+    const result = await waiting;
+    assert.equal(result.complete, mode !== 'deadline');
+    assert.equal(result.candidates.total, 0);
+    assert.doesNotMatch(JSON.stringify(result), /not-for-diagnostics/);
     assert.equal(peer.listenerCount, 0);
     assert.equal(signal.listenerCount, 0);
   });

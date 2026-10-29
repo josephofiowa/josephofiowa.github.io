@@ -1,6 +1,6 @@
-// A STUN server can remain pending after useful local candidates are available.
-// Bound discovery separately from the actual connection attempt. Diagnostics
-// deliberately contain counts/states only, never SDP, addresses or credentials.
+// Give WHIP negotiation a chance even while local discovery is still pending.
+// Candidate counts describe discovery; only the connected peer state proves
+// readiness. Diagnostics never contain SDP, addresses or credentials.
 const CONNECTION_STATES = new Set(['new', 'connecting', 'connected', 'disconnected', 'failed', 'closed']);
 const ICE_STATES = new Set(['new', 'checking', 'connected', 'completed', 'disconnected', 'failed', 'closed']);
 const GATHERING_STATES = new Set(['new', 'gathering', 'complete']);
@@ -73,23 +73,18 @@ function waitForState(peer, { signal, timeoutMs, code, events, check, timeoutMes
   });
 }
 
-export function waitForIceGathering(peer, { signal, timeoutMs = 2500 } = {}) {
+export function waitForIceGathering(peer, { signal, timeoutMs = 1000 } = {}) {
   const code = 'ice-gathering';
-  const noCandidates = 'The browser could not find a connection route. Retry eye tracking.';
   return waitForState(peer, {
     signal, timeoutMs, code,
     events: ['icegatheringstatechange', 'icecandidate', 'connectionstatechange', 'iceconnectionstatechange'],
-    timeoutMessage: noCandidates,
     check: deadline => {
-      const diagnostics = connectionDiagnostics(peer);
       const complete = peer.iceGatheringState === 'complete';
       if (!complete && !deadline) return null;
-      if (!diagnostics.candidates.total) {
-        // A complete empty collection cannot improve with more waiting.
-        if (complete) throw connectionError(peer, code, noCandidates);
-        return null;
-      }
-      return { complete, ...diagnostics };
+      // Roboflow can answer an offer with no listed candidates and establish
+      // a route. Leave success/failure to the connection deadline, rather
+      // than failing before the offer/answer exchange can happen.
+      return { complete, ...connectionDiagnostics(peer) };
     },
   });
 }

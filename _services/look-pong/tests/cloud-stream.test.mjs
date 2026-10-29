@@ -207,7 +207,7 @@ test('stopping a stream closes every transport, cancels scheduled work, and requ
 
 const drainStartup = () => new Promise(resolve => setImmediate(resolve));
 
-function transportStartup(t) {
+function transportStartup(t, { withCandidates = true } = {}) {
   t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
   t.mock.method(console, 'info', () => {});
   t.mock.method(console, 'warn', () => {});
@@ -226,7 +226,7 @@ function transportStartup(t) {
       } };
     }
     async createOffer() {
-      return { type: 'offer', sdp: 'v=0\r\na=candidate:1 1 udp 2122260223 192.0.2.1 50000 typ host\r\n' };
+      return { type: 'offer', sdp: 'v=0\r\n' + (withCandidates ? 'a=candidate:1 1 udp 2122260223 192.0.2.1 50000 typ host\r\n' : '') };
     }
     async setLocalDescription(offer) { this.localDescription = offer; this.iceGatheringState = 'gathering'; }
     async setRemoteDescription(answer) { this.remoteDescription = answer; this.changeConnection('connecting', 'checking'); }
@@ -273,12 +273,12 @@ function transportStartup(t) {
   return { stream, calls, resources, get peer() { return peer; } };
 }
 
-test('startup signals a usable host route despite stalled discovery, and starts inference only after video connects', async t => {
-  const startup = transportStartup(t), { stream, calls, resources } = startup;
+for (const withCandidates of [true, false]) test(`startup signals after one second ${withCandidates ? 'with a host route' : 'without listed routes'} and starts inference only after video connects`, async t => {
+  const startup = transportStartup(t, { withCandidates }), { stream, calls, resources } = startup;
   const started = stream.start({ prewarm: true });
   await drainStartup();
   assert.equal(startup.peer.iceGatheringState, 'gathering');
-  t.mock.timers.tick(2499); await drainStartup();
+  t.mock.timers.tick(999); await drainStartup();
   assert.deepEqual(calls, ['sessions']);
   t.mock.timers.tick(1); await drainStartup();
   assert.deepEqual(calls, ['sessions', 'sessions/transport-test/offer']);
@@ -297,8 +297,9 @@ test('startup signals a usable host route despite stalled discovery, and starts 
   assert.deepEqual(resources, { peerCloses: 1, socketCloses: 1, trackStops: 1, releases: 1 });
 });
 
-for (const failure of ['failed', 'timeout']) test(`a ${failure} video connection releases resources without starting inference`, async t => {
-  const startup = transportStartup(t), { stream, calls, resources } = startup;
+for (const withCandidates of [true, false]) {
+for (const failure of ['failed', 'timeout']) test(`a ${failure} video connection ${withCandidates ? 'with' : 'without'} listed routes releases resources without starting inference`, async t => {
+  const startup = transportStartup(t, { withCandidates }), { stream, calls, resources } = startup;
   const rejected = assert.rejects(stream.start({ prewarm: true }), error => {
     assert.equal(error.code, 'webrtc-connect');
     return true;
@@ -313,12 +314,13 @@ for (const failure of ['failed', 'timeout']) test(`a ${failure} video connection
   assert.equal(stream.stopped, true); assert.equal(stream.abort.signal.aborted, true);
   assert.deepEqual(resources, { peerCloses: 1, socketCloses: 1, trackStops: 1, releases: 1 });
 });
+}
 
-test('cancelling startup during candidate discovery prevents late signaling or inference', async t => {
+for (const cancelAt of [500, 1000]) test(`cancelling startup at ${cancelAt}ms prevents late signaling or inference`, async t => {
   const startup = transportStartup(t), { stream, calls, resources } = startup;
-  const rejected = assert.rejects(stream.start({ prewarm: true }), { name: 'AbortError', code: 'ice-gathering' });
+  const rejected = assert.rejects(stream.start({ prewarm: true }), { name: 'AbortError' });
   await drainStartup();
-  t.mock.timers.tick(1000);
+  t.mock.timers.tick(cancelAt);
   await stream.stop(); await rejected;
   t.mock.timers.tick(40000); await drainStartup();
   assert.deepEqual(calls, ['sessions']);
