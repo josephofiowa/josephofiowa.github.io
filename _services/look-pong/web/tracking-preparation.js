@@ -3,6 +3,7 @@
 export class TrackingPreparation {
   constructor({ loadFace, createStream, onStatus = () => {}, idleMs = 120000 }) {
     this.disposed = false; this.claimed = false; this.onStatus = onStatus;
+    this.streamStops = new WeakMap();
     this.failure = new Promise(resolve => { this.resolveFailure = resolve; });
     this.onStatus('Loading face detection…');
     this.idleTimer = setTimeout(() => { if (!this.claimed) this.dispose(); }, idleMs);
@@ -21,20 +22,54 @@ export class TrackingPreparation {
       this.resolveFailure(this.faceError);
       await this.stopFace(); return null;
     });
-    this.streamPromise = createStream ? Promise.resolve().then(createStream).then(async stream => {
+    this.streamPromise = createStream ? Promise.resolve().then(() => this.prepareStream(createStream)).catch(async error => {
+      if (this.disposed || this.faceError) {
+        try { await this.stopStream(); } catch { /* Cancellation still owns cleanup. */ }
+        return null;
+      }
+      this.streamError = error; this.resolveFailure(error);
+      try { await this.stopStream(); } catch { /* Keep the original startup diagnosis. */ }
+      return null;
+    }) : Promise.resolve(null);
+  }
+
+  async prepareStream(createStream) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (this.disposed || this.faceError) return null;
+      const stream = await createStream();
       this.stream = stream;
       stream.onStatus = message => {
         this.streamStatus = message;
-        if (this.faceReady && !this.disposed) this.onStatus(message);
+        if (this.faceReady && !this.disposed && !this.faceError) this.onStatus(message);
       };
-      if (this.disposed) { await stream.stop(); return null; }
-      await stream.start({ prewarm: true });
-      if (this.disposed) { await stream.stop(); return null; }
+      if (this.disposed || this.faceError) { await this.stopStream(stream); return null; }
+      try {
+        await stream.start({ prewarm: true });
+      } catch (error) {
+        const retry = attempt === 0 && error?.name !== 'AbortError'
+          && ['ice-gathering', 'webrtc-connect'].includes(error?.code)
+          && !this.disposed && !this.faceError;
+        if (!retry) throw error;
+        // Setup failures happen before the inference job starts. Release the
+        // old publishing grant before creating one fresh session, never two
+        // concurrent streams. A cleanup failure must not start another job.
+        try { await this.stopStream(stream); } catch { throw error; }
+        if (this.disposed || this.faceError) return null;
+        this.streamStatus = 'Retrying the eye-tracking connection…';
+        if (this.faceReady) this.onStatus(this.streamStatus);
+        continue;
+      }
+      if (this.disposed || this.faceError) { await this.stopStream(stream); return null; }
       return stream;
-    }).catch(async error => {
-      this.streamError = error; this.resolveFailure(error);
-      await this.stream?.stop(); return null;
-    }) : Promise.resolve(null);
+    }
+  }
+
+  stopStream(stream = this.stream) {
+    if (!stream) return Promise.resolve();
+    if (!this.streamStops.has(stream)) {
+      this.streamStops.set(stream, Promise.resolve().then(() => stream.stop()));
+    }
+    return this.streamStops.get(stream);
   }
 
   async take() {
@@ -58,6 +93,6 @@ export class TrackingPreparation {
   async dispose() {
     if (this.disposed) return;
     this.disposed = true; clearTimeout(this.idleTimer);
-    await Promise.all([this.stopFace(), this.stream?.stop()]);
+    await Promise.all([this.stopFace(), this.stopStream().catch(() => {})]);
   }
 }

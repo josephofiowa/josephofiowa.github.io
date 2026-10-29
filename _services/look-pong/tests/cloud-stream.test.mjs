@@ -204,3 +204,123 @@ test('stopping a stream closes every transport, cancels scheduled work, and requ
   finishStop({ ok: true }); await Promise.all([stopped, stoppedAgain]);
   assert.equal(released, true);
 });
+
+const drainStartup = () => new Promise(resolve => setImmediate(resolve));
+
+function transportStartup(t) {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  t.mock.method(console, 'info', () => {});
+  t.mock.method(console, 'warn', () => {});
+  const calls = [], resources = { peerCloses: 0, socketCloses: 0, trackStops: 0, releases: 0 };
+  let peer;
+  const track = { stop: () => resources.trackStops++, requestFrame() {} };
+  const media = { getVideoTracks: () => [track], getTracks: () => [track] };
+  class FakePeer extends EventTarget {
+    constructor() {
+      super(); peer = this;
+      this.connectionState = 'new'; this.iceConnectionState = 'new'; this.iceGatheringState = 'new';
+    }
+    addTransceiver() {
+      return { setCodecPreferences() {}, sender: {
+        getParameters: () => ({ encodings: [{}] }), setParameters: async () => {},
+      } };
+    }
+    async createOffer() {
+      return { type: 'offer', sdp: 'v=0\r\na=candidate:1 1 udp 2122260223 192.0.2.1 50000 typ host\r\n' };
+    }
+    async setLocalDescription(offer) { this.localDescription = offer; this.iceGatheringState = 'gathering'; }
+    async setRemoteDescription(answer) { this.remoteDescription = answer; this.changeConnection('connecting', 'checking'); }
+    changeConnection(connection, ice = connection) {
+      this.connectionState = connection; this.iceConnectionState = ice;
+      this.dispatchEvent(new Event('connectionstatechange'));
+    }
+    finishGathering() { this.iceGatheringState = 'complete'; this.dispatchEvent(new Event('icegatheringstatechange')); }
+    close() { resources.peerCloses++; this.changeConnection('closed'); }
+  }
+  class FakeSocket {
+    static OPEN = 1;
+    readyState = 1;
+    send() {}
+    close() { resources.socketCloses++; this.onclose?.(); }
+  }
+  const replacements = {
+    document: { querySelector: () => null, createElement: () => ({ getContext: () => ({}), captureStream: () => media }) },
+    location: { href: 'https://game.example/' },
+    RTCPeerConnection: FakePeer,
+    RTCRtpSender: { getCapabilities: () => ({ codecs: [{ mimeType: 'video/H264', sdpFmtpLine: 'packetization-mode=1;profile-level-id=42e01f' }] }) },
+    WebSocket: FakeSocket,
+  };
+  const originals = Object.fromEntries(Object.keys(replacements).map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
+  for (const [name, value] of Object.entries(replacements)) Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
+  const stream = new CloudGazeStream();
+  stream.api = async path => {
+    calls.push(path);
+    if (path === 'sessions') return { id: 'transport-test' };
+    if (path.endsWith('/offer')) return { type: 'answer', sdp: 'v=0\r\n' };
+    return { state: 'running' };
+  };
+  // Exercise real startup, signaling, readiness and teardown without a camera
+  // or a repeating canvas publisher; frame encoding is tested separately.
+  stream.publishFrames = async () => {};
+  stream.release = async () => { resources.releases++; };
+  t.after(async () => {
+    await stream.stop();
+    for (const [name, descriptor] of Object.entries(originals)) {
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+      else delete globalThis[name];
+    }
+  });
+  return { stream, calls, resources, get peer() { return peer; } };
+}
+
+test('startup signals a usable host route despite stalled discovery, and starts inference only after video connects', async t => {
+  const startup = transportStartup(t), { stream, calls, resources } = startup;
+  const started = stream.start({ prewarm: true });
+  await drainStartup();
+  assert.equal(startup.peer.iceGatheringState, 'gathering');
+  t.mock.timers.tick(2499); await drainStartup();
+  assert.deepEqual(calls, ['sessions']);
+  t.mock.timers.tick(1); await drainStartup();
+  assert.deepEqual(calls, ['sessions', 'sessions/transport-test/offer']);
+  assert.equal(startup.peer.connectionState, 'connecting');
+  t.mock.timers.tick(1000); await drainStartup();
+  assert.equal(calls.some(path => path.endsWith('/start')), false, 'publishing an offer alone must not start a GPU job');
+  startup.peer.changeConnection('connected'); await drainStartup();
+  assert.equal(calls.filter(path => path.endsWith('/start')).length, 1);
+  assert.equal(stream.running, true);
+  const sequence = stream.ledger.record({ captured_at: performance.now(), warmup: true });
+  stream.receive({ data: JSON.stringify({ type: 'prediction', prediction: {
+    frame_sequence: sequence, gazes: [{ yaw: 0, pitch: 0 }],
+  } }) });
+  await started;
+  await stream.stop();
+  assert.deepEqual(resources, { peerCloses: 1, socketCloses: 1, trackStops: 1, releases: 1 });
+});
+
+for (const failure of ['failed', 'timeout']) test(`a ${failure} video connection releases resources without starting inference`, async t => {
+  const startup = transportStartup(t), { stream, calls, resources } = startup;
+  const rejected = assert.rejects(stream.start({ prewarm: true }), error => {
+    assert.equal(error.code, 'webrtc-connect');
+    return true;
+  });
+  await drainStartup();
+  startup.peer.finishGathering(); await drainStartup();
+  assert.ok(calls.includes('sessions/transport-test/offer'));
+  if (failure === 'failed') startup.peer.changeConnection('failed');
+  else t.mock.timers.tick(30000);
+  await rejected; await stream.shutdown;
+  assert.equal(calls.some(path => path.endsWith('/start')), false);
+  assert.equal(stream.stopped, true); assert.equal(stream.abort.signal.aborted, true);
+  assert.deepEqual(resources, { peerCloses: 1, socketCloses: 1, trackStops: 1, releases: 1 });
+});
+
+test('cancelling startup during candidate discovery prevents late signaling or inference', async t => {
+  const startup = transportStartup(t), { stream, calls, resources } = startup;
+  const rejected = assert.rejects(stream.start({ prewarm: true }), { name: 'AbortError', code: 'ice-gathering' });
+  await drainStartup();
+  t.mock.timers.tick(1000);
+  await stream.stop(); await rejected;
+  t.mock.timers.tick(40000); await drainStartup();
+  assert.deepEqual(calls, ['sessions']);
+  assert.deepEqual(resources, { peerCloses: 1, socketCloses: 1, trackStops: 1, releases: 1 });
+});
