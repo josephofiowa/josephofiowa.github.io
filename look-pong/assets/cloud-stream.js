@@ -1,6 +1,7 @@
 // WHIP publishing with latest-only JSON results. Calibration and Pong remain
 // in the browser. The frame tag survives video transport and codec buffering.
 import { apiFetch, resultsUrl } from './api-client.js';
+import { waitForIceGathering, waitForPeerConnection } from './rtc-connection.js';
 
 export const STREAM_WIDTH = 448, STREAM_HEIGHT = 480, TAG_HEIGHT = 32;
 export const CAMERA_READY_TIMEOUT_MS = 30000;
@@ -94,10 +95,15 @@ export class CloudGazeStream {
       }
       this.publishFrames();
       await this.pc.setLocalDescription(await this.pc.createOffer());
-      await this.waitFor(this.pc, 'icegatheringstatechange', () => this.pc.iceGatheringState === 'complete', 10000);
+      // A slow STUN probe must not prevent the WHIP offer/answer exchange.
+      // Send after a short best-effort discovery window, even if no local
+      // candidates are listed yet, then try the server's UDP/TCP routes.
+      const gathering = await waitForIceGathering(this.pc, { signal: this.abort.signal });
+      this.abort.signal.throwIfAborted();
+      if (!gathering.complete) console.info('[Look Pong connection]', { code: 'ice-discovery-pending', ...gathering });
       const answer = await this.api(`sessions/${this.id}/offer`, { sdp: this.pc.localDescription.sdp });
       await this.pc.setRemoteDescription(answer);
-      await this.waitFor(this.pc, 'connectionstatechange', () => this.pc.connectionState === 'connected', 30000);
+      await waitForPeerConnection(this.pc, { signal: this.abort.signal });
       this.pc.addEventListener('connectionstatechange', () => {
         if (['failed', 'closed'].includes(this.pc.connectionState) && !this.stopped) this.fail(new Error('The connection ended. Restart the camera.'));
         if (this.pc.connectionState === 'disconnected') {
@@ -113,6 +119,7 @@ export class CloudGazeStream {
       this.pollStatus();
       await (prewarm ? this.prepared : this.ready);
     } catch (error) {
+      if (!this.stopped && error.diagnostics) console.warn('[Look Pong connection]', { code: error.code, ...error.diagnostics });
       if (!this.stopped) this.fail(error);
       throw error;
     }
@@ -155,24 +162,6 @@ export class CloudGazeStream {
       console.warn('[Look Pong startup]', { code, ...this.cameraStats });
       this.fail(new Error(`${message} (${code})`));
     }, CAMERA_READY_TIMEOUT_MS);
-  }
-
-  waitFor(target, event, condition, timeout) {
-    if (condition()) return Promise.resolve();
-    return new Promise((resolve, reject) => {
-      const finish = error => {
-        clearTimeout(timer); target.removeEventListener(event, check); this.abort.signal.removeEventListener('abort', cancel);
-        error ? reject(error) : resolve();
-      };
-      const check = () => {
-        if (condition()) finish();
-        else if (target.connectionState === 'failed') finish(new Error('Could not connect. Check your network and retry.'));
-      };
-      const cancel = () => finish(new Error('Camera connection stopped.'));
-      const timer = setTimeout(() => finish(new Error('The connection timed out. Check your network and retry.')), timeout);
-      target.addEventListener(event, check); this.abort.signal.addEventListener('abort', cancel, { once: true });
-      if (this.abort.signal.aborted) cancel();
-    });
   }
 
   async publishFrames() {
